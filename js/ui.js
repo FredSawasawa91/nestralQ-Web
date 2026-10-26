@@ -79,10 +79,17 @@ window.ui.renderSensors = function (data) {
 window.ui.renderDevices = function (data) {
   const e = window.ui.elements;
   if (e.autoModeSwitch) e.autoModeSwitch.checked = !!data.autoMode;
-  if (e.fanSwitch) e.fanSwitch.checked = !!data.fanState;
-  if (e.heaterSwitch) e.heaterSwitch.checked = !!data.heaterState;
-  if (e.bulbSwitch) e.bulbSwitch.checked = !!data.bulbState;
-  window.ui.renderControlsEnabled();
+
+  const manualOff = !!data.autoMode;
+  [
+    [e.fanSwitch, data.fanState],
+    [e.heaterSwitch, data.heaterState],
+    [e.bulbSwitch, data.bulbState],
+  ].forEach(([el, val]) => {
+    if (!el) return;
+    el.checked = !!val;
+    el.disabled = manualOff;
+  });
 };
 
 // Controls are locked while the link is down (Bluetooth / Local Wi-Fi),

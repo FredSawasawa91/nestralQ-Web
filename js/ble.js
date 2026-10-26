@@ -111,24 +111,29 @@
 
   function writeCommand(text) {
     const p = chain.then(() => writeNow(text));
-    chain = p.catch(() => {});
+    chain = p.catch(() => { });
     return p;
   }
 
-  // Notification format: temperature,humidity,lightIntensity,fan,heater,bulb
+  // Format: temp,hum,light,motion,fan,heater,bulb,buzzer,auto,min,max
   function parseData(text) {
     const v = String(text).trim().split(',');
-    if (v.length < 6) {
+    if (v.length < 11) {
       console.warn('[BLE] Invalid data format:', text);
       return null;
     }
+    const on = (i) => v[i].trim() === '1';
     return {
       temperature: parseFloat(v[0]) || 0,
       humidity: parseFloat(v[1]) || 0,
       lightIntensity: parseInt(v[2], 10) || 0,
-      fanState: v[3].trim() === '1',
-      heaterState: v[4].trim() === '1',
-      bulbState: v[5].trim() === '1',
+      motionDetected: on(3) ? 1 : 0,
+      fanState: on(4),
+      heaterState: on(5),
+      bulbState: on(6),
+      autoMode: on(8),
+      minTemp: parseFloat(v[9]),
+      maxTemp: parseFloat(v[10]),
     };
   }
 
