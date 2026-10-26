@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NestralQ - Smart Home Control</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/modes.css">
     <!-- Firebase CDN (compat version - works with regular scripts) -->
     <script defer
       src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -13,6 +14,8 @@
     <script defer src="js/config.js"></script>
     <script defer src="js/firebase.js"></script>
     <script defer src="js/state.js"></script>
+    <script defer src="js/ble.js"></script>
+    <script defer src="js/local.js"></script>
     <script defer src="js/ui.js"></script>
     <script defer src="js/main.js"></script>
 
@@ -59,6 +62,8 @@
           y2="20" /></symbol>
       <symbol id="i-bluetooth" viewBox="0 0 24 24"><path
           d="m7 7 10 10-5 5V2l5 5L7 17" /></symbol>
+      <symbol id="i-cloud" viewBox="0 0 24 24"><path
+          d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" /></symbol>
     </svg>
     <header class="app-header">
       <div class="header-left">
@@ -97,7 +102,10 @@
           <div class="connection-mode">
             <span class="mode-label">Connection:</span>
             <button class="mode-toggle" id="connection-toggle"
-              aria-label="Toggle connection mode">
+              aria-label="Change connection mode"
+              title="Change connection mode">
+              <svg class="icon icon-sm" id="mode-toggle-icon"><use
+                  href="#i-cloud"></use></svg>
               <span class="mode-text">Online</span>
             </button>
           </div>
@@ -210,16 +218,30 @@
 
         <div class="settings-section">
           <h2 class="section-title">Connection Mode</h2>
-          <div class="settings-row">
-            <div class="settings-label">
-              <svg class="icon" id="connection-mode-icon"><use
-                  href="#i-wifi"></use></svg>
-              Connection Type
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="connection-mode-switch">
-              <span class="switch-slider"></span>
-            </label>
+          <div class="mode-segment" role="group" aria-label="Connection mode">
+            <button class="mode-btn active" id="mode-btn-online"
+              data-mode="online">
+              <svg class="icon icon-sm"><use
+                  href="#i-cloud"></use></svg><span>Online</span>
+            </button>
+            <button class="mode-btn" id="mode-btn-bluetooth"
+              data-mode="bluetooth">
+              <svg class="icon icon-sm"><use
+                  href="#i-bluetooth"></use></svg><span>Bluetooth</span>
+            </button>
+            <button class="mode-btn" id="mode-btn-local" data-mode="local">
+              <svg class="icon icon-sm"><use
+                  href="#i-wifi"></use></svg><span>Local Wi-Fi</span>
+            </button>
+          </div>
+          <p class="mode-status" id="mode-status"></p>
+          <p class="mode-error" id="mode-error"></p>
+          <p class="mode-note" id="mode-note"></p>
+          <div class="input-group ip-group">
+            <label for="local-ip-input">ESP32 IP address (for Local
+              Wi-Fi)</label>
+            <input type="text" id="local-ip-input" placeholder="192.168.1.50"
+              autocomplete="off" spellcheck="false">
           </div>
         </div>
 
@@ -244,5 +266,6 @@
     <footer class="app-footer">
       <p>NestralQ Smart Home Control v1.0.0</p>
     </footer>
+    <div class="toast" id="toast" role="status"></div>
   </body>
 </html>

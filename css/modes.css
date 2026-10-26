@@ -1,0 +1,101 @@
+/* ---------- Connection mode selector ---------- */
+.mode-segment {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background-color: var(--bg-color);
+}
+
+.mode-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.6rem 0.5rem;
+  border-radius: 9px;
+  color: var(--subtext-color);
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.mode-btn.active {
+  background-color: var(--primary-color);
+  color: #ffffff;
+}
+
+.mode-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mode-status {
+  margin-top: 0.9rem;
+  font-size: 0.85rem;
+  color: var(--subtext-color);
+}
+
+.mode-error {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--danger-color);
+}
+
+.mode-error:empty,
+.mode-note:empty {
+  display: none;
+}
+
+.mode-note {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--subtext-color);
+}
+
+.ip-group {
+  margin-top: 1rem;
+}
+
+.ip-group input {
+  max-width: 220px;
+}
+
+/* ---------- Link state on the badge and the chip ---------- */
+.status-badge.is-connecting,
+.mode-toggle.is-connecting {
+  background-color: var(--accent-color);
+  color: #ffffff;
+}
+
+.status-badge.is-down,
+.mode-toggle.is-down {
+  background-color: var(--danger-color);
+  color: #ffffff;
+}
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translate(-50%, 20px);
+  max-width: min(90vw, 420px);
+  padding: 0.75rem 1.1rem;
+  border-radius: var(--radius-sm);
+  background-color: #1f2937;
+  color: #ffffff;
+  font-size: 0.9rem;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 1000;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
