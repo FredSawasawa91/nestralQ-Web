@@ -1,0 +1,31 @@
+{
+  "name": "nestralq-web",
+  "version": "1.0.0",
+  "description": "NestralQ Smart Home Control",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.nestralq.app",
+    "productName": "NestralQ",
+    "files": [
+      "index.html",
+      "css/**/*",
+      "js/**/*",
+      "electron-main.js",
+      "build/icon.*"
+    ],
+    "win": { "target": "nsis" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.15.3"
+  }
+}

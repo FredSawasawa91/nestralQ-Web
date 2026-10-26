@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NestralQ - Smart Home Control</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Firebase CDN (compat version - works with regular scripts) -->
+    <script defer
+      src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script defer
+      src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script defer src="js/config.js"></script>
+    <script defer src="js/firebase.js"></script>
+    <script defer src="js/state.js"></script>
+    <script defer src="js/ui.js"></script>
+    <script defer src="js/main.js"></script>
+
+    <link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="assets/icons/favicon.ico" sizes="any">
+  </head>
+  <body>
+    <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0"
+      style="position:absolute" aria-hidden="true">
+      <symbol id="i-home" viewBox="0 0 24 24"><path
+          d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline
+          points="9 22 9 12 15 12 15 22" /></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12"
+          r="3" /><path
+          d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></symbol>
+      <symbol id="i-thermometer" viewBox="0 0 24 24"><path
+          d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z" /></symbol>
+      <symbol id="i-droplets" viewBox="0 0 24 24"><path
+          d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z" /><path
+          d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97" /></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12"
+          r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path
+          d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path
+          d="M2 12h2" /><path d="M20 12h2" /><path
+          d="m6.34 17.66-1.41 1.41" /><path
+          d="m19.07 4.93-1.41 1.41" /></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path
+          d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></symbol>
+      <symbol id="i-activity" viewBox="0 0 24 24"><path
+          d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" /></symbol>
+      <symbol id="i-fan" viewBox="0 0 24 24"><path
+          d="M10.827 16.379a6.082 6.082 0 0 1-8.618-7.002l5.412 1.45a6.082 6.082 0 0 1 7.002-8.618l-1.45 5.412a6.082 6.082 0 0 1 8.618 7.002l-5.412-1.45a6.082 6.082 0 0 1-7.002 8.618l1.45-5.412Z" /><path
+          d="M12 12v.01" /></symbol>
+      <symbol id="i-flame" viewBox="0 0 24 24"><path
+          d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" /></symbol>
+      <symbol id="i-lightbulb" viewBox="0 0 24 24"><path
+          d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /><path
+          d="M9 18h6" /><path d="M10 22h4" /></symbol>
+      <symbol id="i-zap" viewBox="0 0 24 24"><polygon
+          points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></symbol>
+      <symbol id="i-wifi" viewBox="0 0 24 24"><path
+          d="M5 13a10 10 0 0 1 14 0" /><path d="M8.5 16.5a5 5 0 0 1 7 0" /><path
+          d="M2 8.82a15 15 0 0 1 20 0" /><line x1="12" x2="12.01" y1="20"
+          y2="20" /></symbol>
+      <symbol id="i-bluetooth" viewBox="0 0 24 24"><path
+          d="m7 7 10 10-5 5V2l5 5L7 17" /></symbol>
+    </svg>
+    <header class="app-header">
+      <div class="header-left">
+        <h1>NestralQ</h1>
+        <span class="app-subtitle">Smart Home Control</span>
+      </div>
+      <div class="header-right">
+        <span class="status-badge" id="status-badge">
+          <svg class="icon icon-sm" id="status-badge-icon"><use
+              href="#i-wifi"></use></svg>
+          <span id="status-badge-text">Online</span>
+        </span>
+        <button class="theme-toggle" id="theme-toggle"
+          aria-label="Toggle dark mode">
+          <svg class="icon icon-sm" id="theme-toggle-icon"><use
+              href="#i-moon"></use></svg>
+        </button>
+      </div>
+    </header>
+
+    <nav class="tab-bar" id="tab-bar">
+      <button class="tab-btn active" id="tab-home-btn" data-tab="home">
+        <svg class="icon"><use href="#i-home"></use></svg>
+        <span class="tab-label">Home</span>
+      </button>
+      <button class="tab-btn" id="tab-settings-btn" data-tab="settings">
+        <svg class="icon"><use href="#i-settings"></use></svg>
+        <span class="tab-label">Settings</span>
+      </button>
+    </nav>
+
+    <main class="app-content">
+      <section id="tab-home" class="tab-panel active">
+        <!-- Status + Theme row -->
+        <div class="top-row">
+          <div class="connection-mode">
+            <span class="mode-label">Connection:</span>
+            <button class="mode-toggle" id="connection-toggle"
+              aria-label="Toggle connection mode">
+              <span class="mode-text">Online</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sensors Grid -->
+        <div class="sensors-grid">
+          <div class="sensor-card temp-card">
+            <div class="sensor-icon"><svg class="icon icon-lg"><use
+                  href="#i-thermometer"></use></svg></div>
+            <div class="sensor-info">
+              <div class="sensor-label">Temperature</div>
+              <div class="sensor-value" id="temp-value">0.0°C</div>
+            </div>
+          </div>
+
+          <div class="sensor-card humid-card">
+            <div class="sensor-icon"><svg class="icon icon-lg"><use
+                  href="#i-droplets"></use></svg></div>
+            <div class="sensor-info">
+              <div class="sensor-label">Humidity</div>
+              <div class="sensor-value" id="humidity-value">0%</div>
+            </div>
+          </div>
+
+          <div class="sensor-card light-card">
+            <div class="sensor-icon"><svg class="icon icon-lg"><use
+                  href="#i-sun"></use></svg></div>
+            <div class="sensor-info">
+              <div class="sensor-label">Light Intensity</div>
+              <div class="sensor-value" id="light-value">0 lux</div>
+            </div>
+          </div>
+
+          <div class="sensor-card motion-card">
+            <div class="sensor-icon"><svg class="icon icon-lg"><use
+                  href="#i-activity"></use></svg></div>
+            <div class="sensor-info">
+              <div class="sensor-label">Motion Detection</div>
+              <div class="sensor-value motion-value clear"
+                id="motion-value">Clear</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Device Controls -->
+        <div class="controls-section">
+          <h2 class="section-title">Device Controls</h2>
+          <div class="control-row">
+            <div class="control-label"><svg class="icon icon-sm icon-auto"><use
+                  href="#i-zap"></use></svg>Automation Mode</div>
+            <label class="switch"><input type="checkbox"
+                id="auto-mode-switch"><span
+                class="switch-slider"></span></label>
+          </div>
+          <div class="control-row">
+            <div class="control-label"><svg class="icon icon-sm icon-fan"><use
+                  href="#i-fan"></use></svg>Fan</div>
+            <label class="switch"><input type="checkbox" id="fan-switch"><span
+                class="switch-slider"></span></label>
+          </div>
+          <div class="control-row">
+            <div class="control-label"><svg
+                class="icon icon-sm icon-heater"><use
+                  href="#i-flame"></use></svg>Heater</div>
+            <label class="switch"><input type="checkbox"
+                id="heater-switch"><span class="switch-slider"></span></label>
+          </div>
+          <div class="control-row">
+            <div class="control-label"><svg class="icon icon-sm icon-bulb"><use
+                  href="#i-lightbulb"></use></svg>Bulb</div>
+            <label class="switch"><input type="checkbox" id="bulb-switch"><span
+                class="switch-slider"></span></label>
+          </div>
+        </div>
+
+        <!-- Temperature Thresholds -->
+        <div class="thresholds-section">
+          <h2 class="section-title">Temperature Thresholds</h2>
+          <div class="threshold-inputs">
+            <div class="input-group">
+              <label>Min Temp (°C)</label>
+              <input type="number" id="min-temp-input" value="22" step="0.5">
+            </div>
+            <div class="input-group">
+              <label>Max Temp (°C)</label>
+              <input type="number" id="max-temp-input" value="28" step="0.5">
+            </div>
+            <button class="btn-update" id="update-thresholds-btn">Update
+              Thresholds</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-settings" class="tab-panel">
+        <div class="settings-section">
+          <h2 class="section-title">Appearance</h2>
+          <div class="settings-row">
+            <div class="settings-label">
+              <svg class="icon" id="dark-mode-icon"><use
+                  href="#i-moon"></use></svg>
+              Dark Mode
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="dark-mode-switch">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h2 class="section-title">Connection Mode</h2>
+          <div class="settings-row">
+            <div class="settings-label">
+              <svg class="icon" id="connection-mode-icon"><use
+                  href="#i-wifi"></use></svg>
+              Connection Type
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="connection-mode-switch">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h2 class="section-title">Temperature Thresholds</h2>
+          <div class="threshold-inputs">
+            <div class="input-group">
+              <label>Min Temp (°C)</label>
+              <input type="number" id="settings-min-temp" value="22" step="0.5">
+            </div>
+            <div class="input-group">
+              <label>Max Temp (°C)</label>
+              <input type="number" id="settings-max-temp" value="28" step="0.5">
+            </div>
+            <button class="btn-update"
+              id="settings-update-thresholds-btn">Update Thresholds</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>NestralQ Smart Home Control v1.0.0</p>
+    </footer>
+  </body>
+</html>
