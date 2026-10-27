@@ -118,7 +118,18 @@
 
   function sendCommand(command) {
     if (!active || !ip) return Promise.reject(new Error('Not connected to the ESP32.'));
-    return request(ip, '/cmd?c=' + encodeURIComponent(command));
+    return request(ip, '/cmd?c=' + encodeURIComponent(command)).then(d => ({
+      temperature: Number(d.temperature) || 0,
+      humidity: Number(d.humidity) || 0,
+      lightIntensity: Number(d.light) || 0,
+      motionDetected: d.motion ? 1 : 0,
+      fanState: !!d.fan,
+      heaterState: !!d.heater,
+      bulbState: !!d.bulb,
+      autoMode: !!d.auto,
+      minTemp: Number(d.min),
+      maxTemp: Number(d.max),
+    }));
   }
 
   window.localApi = { isAvailable, isValidIp, start, stop, sendCommand };

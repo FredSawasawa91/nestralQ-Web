@@ -107,16 +107,15 @@ function leaveCurrentMode() {
   window.localApi.stop();
 }
 
-function fallBackToOnline(message) {
-  leaveCurrentMode();
-  window.state.setConnectionMode('online');
-  setLink({ status: 'connected', error: message });
-  startFirebaseListeners();
+function reportLocalError(message) {
+  // Stay in the current mode (Bluetooth or Local Wi-Fi) and just report the error.
+  // Do not silently switch to Online mode.
+  window.state.setLink({ status: 'disconnected', error: message });
 }
 
 async function startBluetooth(id) {
   if (!window.bleApi.isSupported()) {
-    fallBackToOnline('Bluetooth: this browser does not support Web Bluetooth. Use Chrome or Edge, or the desktop app.');
+    reportLocalError('Bluetooth: this browser does not support Web Bluetooth. Use Chrome or Edge, or the desktop app.');
     return;
   }
 
@@ -151,7 +150,7 @@ async function startBluetooth(id) {
     }
   } catch (error) {
     if (id !== sessionId) return;
-    fallBackToOnline('Bluetooth: ' + error.message);
+    reportLocalError('Bluetooth: ' + error.message);
   }
 }
 
@@ -172,7 +171,7 @@ async function startLocal(id) {
     if (!started || id !== sessionId) return;
   } catch (error) {
     if (id !== sessionId) return;
-    fallBackToOnline('Local Wi-Fi: ' + error.message);
+    reportLocalError('Local Wi-Fi: ' + error.message);
   }
 }
 
@@ -215,7 +214,9 @@ async function dispatchCommand(mode, firebaseWrite, command) {
   } else if (mode === 'bluetooth') {
     await window.bleApi.writeCommand(command);
   } else {
-    await window.localApi.sendCommand(command);
+    const result = await window.localApi.sendCommand(command);
+    // Apply the device's real state from the response (same as BLE notifications)
+    if (result) applyReport(result);
   }
 }
 
