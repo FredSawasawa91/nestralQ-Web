@@ -17,11 +17,19 @@ window.ui.initElements = function () {
     'status-badge', 'status-badge-icon', 'status-badge-text',
     'connection-toggle', 'mode-toggle-icon',
     'mode-status', 'mode-error', 'mode-note', 'local-ip-input',
-    'tab-home-btn', 'tab-settings-btn',
-    'tab-home', 'tab-settings',
+    'tab-home-btn', 'tab-history-btn', 'tab-reports-btn', 'tab-settings-btn',
+    'tab-home', 'tab-history', 'tab-reports', 'tab-settings',
     'update-thresholds-btn', 'settings-update-thresholds-btn',
     'theme-toggle', 'theme-toggle-icon', 'dark-mode-icon',
     'toast',
+    // History
+    'history-range', 'export-csv-btn',
+    'hist-count', 'hist-avg-temp', 'hist-min-max', 'hist-motion',
+    'history-table-body', 'history-chart',
+    // Reports
+    'reports-period', 'export-report-csv-btn',
+    'rep-total-days', 'rep-avg-temp', 'rep-min-temp', 'rep-max-temp',
+    'reports-table-body',
   ];
 
   ids.forEach((id) => {
@@ -34,6 +42,25 @@ window.ui.initElements = function () {
 
   window.ui.elements.connectionModeText = document.querySelector('.mode-text');
   window.ui.elements.modeButtons = Array.from(document.querySelectorAll('.mode-btn'));
+
+  // History element references (HTML uses hyphenated IDs; keys are camelCase)
+  window.ui.elements.historyRange = document.getElementById('history-range');
+  window.ui.elements.exportCsvBtn = document.getElementById('export-csv-btn');
+  window.ui.elements.histCount = document.getElementById('hist-count');
+  window.ui.elements.histAvgTemp = document.getElementById('hist-avg-temp');
+  window.ui.elements.histMinMax = document.getElementById('hist-min-max');
+  window.ui.elements.histMotion = document.getElementById('hist-motion');
+  window.ui.elements.historyTableBody = document.getElementById('history-table-body');
+  window.ui.elements.historyChartCanvas = document.getElementById('history-chart');
+
+  // Reports element references
+  window.ui.elements.reportsPeriod = document.getElementById('reports-period');
+  window.ui.elements.exportReportCsvBtn = document.getElementById('export-report-csv-btn');
+  window.ui.elements.repTotalDays = document.getElementById('rep-total-days');
+  window.ui.elements.repAvgTemp = document.getElementById('rep-avg-temp');
+  window.ui.elements.repMinTemp = document.getElementById('rep-min-temp');
+  window.ui.elements.repMaxTemp = document.getElementById('rep-max-temp');
+  window.ui.elements.reportsTableBody = document.getElementById('reports-table-body');
 };
 
 window.ui.setIcon = function (svgEl, name) {
@@ -131,6 +158,256 @@ window.ui.renderIp = function (ip) {
   if (window.ui.elements.localIpInput) window.ui.elements.localIpInput.value = ip || '';
 };
 
+// ---------- Sensor History & Reports ----------
+
+const formatTs = (ts) => {
+  if (!ts) return '-';
+  const d = new Date(Number(ts) * 1000);
+  return d.toLocaleString(undefined, {
+    month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+};
+
+let historyChart = null;
+
+window.ui.renderHistory = function (entries) {
+  const e = window.ui.elements;
+  const now = Date.now();
+  const rangeSel = e.historyRange;
+  const range = rangeSel ? rangeSel.value : '24h';
+
+  const rangeMs = {
+    '24h': 24 * 60 * 60 * 1000,
+    '7d': 7 * 24 * 60 * 60 * 1000,
+    '30d': 30 * 24 * 60 * 60 * 1000,
+    all: Infinity,
+  }[range] || Infinity;
+
+  const filtered = entries.filter((en) => {
+    if (!en.ts) return false;
+    return now - Number(en.ts) * 1000 <= rangeMs;
+  });
+
+  // Stats
+  const temps = filtered.map((en) => en.temperature).filter((v) => v != null);
+  const humids = filtered.map((en) => en.humidity).filter((v) => v != null);
+  const avgTemp = temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : '-';
+  const minTemp = temps.length ? Math.min(...temps).toFixed(1) : '-';
+  const maxTemp = temps.length ? Math.max(...temps).toFixed(1) : '-';
+  const avgHumidity = humids.length
+    ? (humids.reduce((a, b) => a + b, 0) / humids.length).toFixed(1)
+    : '-';
+
+  if (e.histCount) e.histCount.textContent = filtered.length;
+  if (e.histAvgTemp) e.histAvgTemp.textContent = avgTemp === '-' ? '-' : avgTemp + '°C';
+  if (e.histMinMax) e.histMinMax.textContent = minTemp === '-' ? '- / -' : minTemp + ' / ' + maxTemp;
+  if (e.histMotion) e.histMotion.textContent = filtered.filter((en) => en.motionDetected).length;
+
+  // Table
+  const body = e.historyTableBody;
+  if (body) {
+    body.innerHTML = '';
+    if (filtered.length === 0) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 5;
+      td.textContent = 'No sensor history in this range.';
+      td.style.textAlign = 'center';
+      tr.appendChild(td);
+      body.appendChild(tr);
+    } else {
+      // Show newest 200 rows in table
+      filtered.slice(0, 200).forEach((en) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + formatTs(en.ts) + '</td>' +
+          '<td>' + (en.temperature != null ? en.temperature.toFixed(1) : '-') + '</td>' +
+          '<td>' + (en.humidity != null ? en.humidity.toFixed(1) : '-') + '</td>' +
+          '<td>' + (en.lightIntensity != null ? Math.round(en.lightIntensity) : '-') + '</td>' +
+          '<td><span class="' + (en.motionDetected ? 'motion-yes' : 'motion-no') + '">' +
+          (en.motionDetected ? 'Yes' : 'No') + '</span></td>';
+        body.appendChild(tr);
+      });
+    }
+  }
+
+  // Chart (temperature line)
+  const canvas = e.historyChartCanvas;
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    if (historyChart) {
+      historyChart.destroy();
+    }
+
+    // Use newest 120 points for chart
+    const chartData = filtered.slice(0, 120).reverse();
+    const labels = chartData.map((en) => formatTs(en.ts));
+    const tempValues = chartData.map((en) => (en.temperature != null ? en.temperature : null));
+    const humValues = chartData.map((en) => (en.humidity != null ? en.humidity : null));
+
+    historyChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Temperature (°C)',
+            data: tempValues,
+            borderColor: '#ef4444',
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+          },
+          {
+            label: 'Humidity (%)',
+            data: humValues,
+            borderColor: '#0ea5e9',
+            backgroundColor: 'rgba(14, 165, 233, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top', labels: { color: getComputedStyle(document.documentElement).color || '#333' } },
+          title: {
+            display: true,
+            text: 'Sensor History (' + range + ')',
+            color: getComputedStyle(document.documentElement).color || '#333',
+          },
+        },
+        scales: {
+          x: { display: true, ticks: { maxRotation: 45, minRotation: 45 } },
+          y: {
+            beginAtZero: false,
+            title: { display: true, text: 'Value', color: getComputedStyle(document.documentElement).color || '#333' },
+          },
+        },
+      },
+    });
+  }
+};
+
+window.ui.renderChart = window.ui.renderHistory;
+
+// ---------- Reports ----------
+
+const formatPeriod = (key, period) => {
+  if (!key) return '-';
+  if (period === 'daily') {
+    const d = new Date(key + 'T00:00:00Z');
+    return d.toLocaleDateString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+    });
+  }
+  return 'Week of ' + key;
+};
+
+window.ui.renderReports = function (entries) {
+  const e = window.ui.elements;
+  const periodSel = e.reportsPeriod;
+  const period = periodSel ? periodSel.value : 'daily';
+
+  // ---------- Aggregate ----------
+  const groupByDay = (entries) => {
+    const groups = {};
+    entries.forEach((en) => {
+      if (!en.ts) return;
+      const d = new Date(Number(en.ts) * 1000);
+      const key = d.toISOString().split('T')[0];
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(en);
+    });
+    return groups;
+  };
+
+  const groupByWeek = (entries) => {
+    const groups = {};
+    entries.forEach((en) => {
+      if (!en.ts) return;
+      const d = new Date(Number(en.ts) * 1000);
+      const dayOfWeek = d.getUTCDay();
+      const startOfWeek = new Date(d);
+      startOfWeek.setUTCDate(d.getUTCDate() - dayOfWeek);
+      const key = startOfWeek.toISOString().split('T')[0];
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(en);
+    });
+    return groups;
+  };
+
+  const groups = period === 'daily' ? groupByDay(entries) : groupByWeek(entries);
+  const keys = Object.keys(groups).sort().reverse();
+
+  // ---------- Stats per group ----------
+  const computeStats = (groupEntries) => {
+    const temps = groupEntries.map((en) => en.temperature).filter((v) => v != null);
+    const humids = groupEntries.map((en) => en.humidity).filter((v) => v != null);
+    const motions = groupEntries.filter((en) => en.motionDetected).length;
+    return {
+      count: groupEntries.length,
+      avgTemp: temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : '-',
+      minTemp: temps.length ? Math.min(...temps).toFixed(1) : '-',
+      maxTemp: temps.length ? Math.max(...temps).toFixed(1) : '-',
+      avgHumidity: humids.length
+        ? (humids.reduce((a, b) => a + b, 0) / humids.length).toFixed(1)
+        : '-',
+      motionCount: motions,
+    };
+  };
+
+  // ---------- Overall stats ----------
+  const allTemps = entries.map((en) => en.temperature).filter((v) => v != null);
+  if (e.repTotalDays) e.repTotalDays.textContent = keys.length;
+  if (e.repAvgTemp) e.repAvgTemp.textContent = allTemps.length
+    ? (allTemps.reduce((a, b) => a + b, 0) / allTemps.length).toFixed(1) + '°C'
+    : '-';
+  if (e.repMinTemp) e.repMinTemp.textContent = allTemps.length
+    ? Math.min(...allTemps).toFixed(1) + '°C'
+    : '-';
+  if (e.repMaxTemp) e.repMaxTemp.textContent = allTemps.length
+    ? Math.max(...allTemps).toFixed(1) + '°C'
+    : '-';
+
+  // ---------- Table ----------
+  const body = e.reportsTableBody;
+  if (body) {
+    body.innerHTML = '';
+    if (keys.length === 0) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 7;
+      td.textContent = 'No report data available.';
+      td.style.textAlign = 'center';
+      tr.appendChild(td);
+      body.appendChild(tr);
+    } else {
+      keys.forEach((key) => {
+        const stats = computeStats(groups[key]);
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + formatPeriod(key, period) + '</td>' +
+          '<td>' + stats.count + '</td>' +
+          '<td>' + stats.avgTemp + '°C</td>' +
+          '<td>' + stats.minTemp + '°C</td>' +
+          '<td>' + stats.maxTemp + '°C</td>' +
+          '<td>' + stats.avgHumidity + '%</td>' +
+          '<td>' + stats.motionCount + '</td>';
+        body.appendChild(tr);
+      });
+    }
+  }
+};
+
 // ---------- Connection status ----------
 
 const MODE_META = {
@@ -210,15 +487,22 @@ window.ui.renderAvailability = function (avail) {
 
 window.ui.switchTab = function (tabName) {
   const e = window.ui.elements;
-  const home = tabName === 'home';
 
-  if (e.tabHomeBtn && e.tabSettingsBtn) {
-    e.tabHomeBtn.classList.toggle('active', home);
-    e.tabSettingsBtn.classList.toggle('active', !home);
+  // Deactivate all tab buttons and panels
+  const allTabs = ['home', 'history', 'reports', 'settings'];
+  allTabs.forEach((t) => {
+    const btn = e['tab' + t.charAt(0).toUpperCase() + t.slice(1) + 'Btn'];
+    const panel = e['tab' + t.charAt(0).toUpperCase() + t.slice(1)];
+    if (btn) btn.classList.toggle('active', t === tabName);
+    if (panel) panel.classList.toggle('active', t === tabName);
+  });
+
+  // Re-render the active tab's dynamic content
+  if (tabName === 'history' && e.historyRange) {
+    window.ui.renderHistory(window.state.history || []);
   }
-  if (e.tabHome && e.tabSettings) {
-    e.tabHome.classList.toggle('active', home);
-    e.tabSettings.classList.toggle('active', !home);
+  if (tabName === 'reports' && e.reportsPeriod) {
+    window.ui.renderReports(window.state.history || []);
   }
 };
 
@@ -287,10 +571,48 @@ window.ui.setupEventListeners = function (callbacks) {
     });
   }
 
+  // History range selector
+  if (e.historyRange) {
+    e.historyRange.addEventListener('change', () => {
+      if (callbacks.onRangeChange) callbacks.onRangeChange(e.historyRange.value);
+    });
+  }
+
+  // Export History CSV
+  if (e.exportCsvBtn) {
+    e.exportCsvBtn.addEventListener('click', () => {
+      if (callbacks.onExportCsv) callbacks.onExportCsv();
+    });
+  }
+
+  // Reports period selector
+  if (e.reportsPeriod) {
+    e.reportsPeriod.addEventListener('change', () => {
+      if (callbacks.onPeriodChange) callbacks.onPeriodChange(e.reportsPeriod.value);
+    });
+  }
+
+  // Export Reports CSV
+  if (e.exportReportCsvBtn) {
+    e.exportReportCsvBtn.addEventListener('click', () => {
+      if (callbacks.onExportReportCsv) callbacks.onExportReportCsv();
+    });
+  }
+
   // Tab navigation
   if (e.tabHomeBtn) {
     e.tabHomeBtn.addEventListener('click', () => {
       if (callbacks.onTabChange) callbacks.onTabChange('home');
+    });
+  }
+  if (e.tabHistoryBtn) {
+    e.tabHistoryBtn.addEventListener('click', () => {
+      if (callbacks.onTabChange) callbacks.onTabChange('history');
+    });
+  }
+  if (e.tabReportsBtn) {
+    e.tabReportsBtn.addEventListener('click', () => {
+      if (callbacks.onTabChange) callbacks.onTabChange('reports');
     });
   }
   if (e.tabSettingsBtn) {

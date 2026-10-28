@@ -11,6 +11,7 @@
       src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script defer
       src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script defer src="js/config.js"></script>
     <script defer src="js/firebase.js"></script>
     <script defer src="js/state.js"></script>
@@ -64,6 +65,10 @@
           d="m7 7 10 10-5 5V2l5 5L7 17" /></symbol>
       <symbol id="i-cloud" viewBox="0 0 24 24"><path
           d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" /></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24"><path
+          d="M9 3c-2.8 0-5 2.2-5 5v1h2V8a1 1 0 0 1 2 0v1H8v3h2V8a1 1 0 0 1 2 0v1h1V8c0-2.8-2.2-5-5-5" /></symbol>
+      <symbol id="i-chart-bar" viewBox="0 0 24 24"><path
+          d="M5 19h2v-3H5v3zm4 0h2v-7H9v7zm4 0h2v-4h-2v4zm4 0h2v-2h-2v2z" /></symbol>
     </svg>
     <header class="app-header">
       <div class="header-left">
@@ -88,6 +93,14 @@
       <button class="tab-btn active" id="tab-home-btn" data-tab="home">
         <svg class="icon"><use href="#i-home"></use></svg>
         <span class="tab-label">Home</span>
+      </button>
+      <button class="tab-btn" id="tab-history-btn" data-tab="history">
+        <svg class="icon"><use href="#i-history"></use></svg>
+        <span class="tab-label">History</span>
+      </button>
+      <button class="tab-btn" id="tab-reports-btn" data-tab="reports">
+        <svg class="icon"><use href="#i-chart-bar"></use></svg>
+        <span class="tab-label">Reports</span>
       </button>
       <button class="tab-btn" id="tab-settings-btn" data-tab="settings">
         <svg class="icon"><use href="#i-settings"></use></svg>
@@ -199,6 +212,122 @@
           </div>
         </div>
       </section>
+
+      <!-- History Tab -->
+      <section id="tab-history" class="tab-panel">
+        <div class="history-section">
+          <div class="history-header">
+            <h2 class="section-title">Sensor History</h2>
+            <div class="history-controls">
+              <div class="input-group range-group">
+                <label>Range</label>
+                <select id="history-range">
+                  <option value="24h">Last 24 hours</option>
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                  <option value="all">All time</option>
+                </select>
+              </div>
+              <button class="btn-update" id="export-csv-btn">Export CSV</button>
+            </div>
+          </div>
+
+          <div class="history-stats">
+            <div class="stat-card">
+              <div class="stat-value" id="hist-count">0</div>
+              <div class="stat-label">Readings</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="hist-avg-temp">-</div>
+              <div class="stat-label">Avg Temp (°C)</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="hist-min-max">- / -</div>
+              <div class="stat-label">Min / Max Temp</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="hist-motion">0</div>
+              <div class="stat-label">Motion Events</div>
+            </div>
+          </div>
+
+          <div class="history-chart-wrap">
+            <canvas id="history-chart"></canvas>
+          </div>
+
+          <div class="history-table-wrap">
+            <table id="history-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Temp (°C)</th>
+                  <th>Humidity (%)</th>
+                  <th>Light (lux)</th>
+                  <th>Motion</th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Reports Tab -->
+      <section id="tab-reports" class="tab-panel">
+        <div class="reports-section">
+          <div class="reports-header">
+            <h2 class="section-title">Reports</h2>
+            <div class="reports-controls">
+              <div class="input-group period-group">
+                <label>Period</label>
+                <select id="reports-period">
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                </select>
+              </div>
+              <button class="btn-update" id="export-report-csv-btn">Export CSV</button>
+            </div>
+          </div>
+
+          <div class="reports-stats">
+            <div class="stat-card">
+              <div class="stat-value" id="rep-total-days">0</div>
+              <div class="stat-label">Days Tracked</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="rep-avg-temp">-</div>
+              <div class="stat-label">Avg Temp (°C)</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="rep-min-temp">-</div>
+              <div class="stat-label">Min Temp (°C)</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="rep-max-temp">-</div>
+              <div class="stat-label">Max Temp (°C)</div>
+            </div>
+          </div>
+
+          <div class="reports-table-wrap">
+            <table id="reports-table">
+              <thead>
+                <tr>
+                  <th>Period</th>
+                  <th>Readings</th>
+                  <th>Avg Temp (°C)</th>
+                  <th>Min Temp (°C)</th>
+                  <th>Max Temp (°C)</th>
+                  <th>Avg Humidity (%)</th>
+                  <th>Motion Events</th>
+                </tr>
+              </thead>
+              <tbody id="reports-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-settings" class="tab-panel">
 
       <section id="tab-settings" class="tab-panel">
         <div class="settings-section">

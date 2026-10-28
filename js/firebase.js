@@ -62,6 +62,21 @@
         u2();
       };
     },
+
+    startHistoryListener: (cb) => {
+      const r = db.ref('sensorLog');
+      const cb2 = (snap) => {
+        const d = snap.val() || {};
+        const arr = Object.entries(d)
+          .map(([k, v]) => ({ id: k, ...v }))
+          .sort((a, b) => b.ts - a.ts);
+        cb(arr);
+      };
+      r.on('value', cb2, (err) =>
+        console.error(`[Firebase] Listen error /sensorLog:`, err.message)
+      );
+      return () => r.off('value', cb2);
+    },
   };
 
   console.log('[Firebase] Ready');

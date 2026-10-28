@@ -29,7 +29,7 @@ function isFirebaseReady() {
 }
 
 // ---------- Firebase (Online mode) ----------
-let unsubscribeSensors, unsubscribeCommands, unsubscribeAutoMode, unsubscribeThresholds;
+let unsubscribeSensors, unsubscribeCommands, unsubscribeAutoMode, unsubscribeThresholds, unsubscribeHistory;
 
 function startFirebaseListeners() {
   if (!isFirebaseReady()) return;
@@ -58,6 +58,11 @@ function startFirebaseListeners() {
     window.state.updateThresholds(data);
     window.ui.renderThresholds(window.state.thresholds);
   });
+
+  unsubscribeHistory = window.fbApi.startHistoryListener((data) => {
+    window.state.history = data;
+    window.ui.renderHistory(data);
+  });
 }
 
 function stopFirebaseListeners() {
@@ -65,7 +70,7 @@ function stopFirebaseListeners() {
   if (unsubscribeCommands) unsubscribeCommands();
   if (unsubscribeAutoMode) unsubscribeAutoMode();
   if (unsubscribeThresholds) unsubscribeThresholds();
-  unsubscribeSensors = unsubscribeCommands = unsubscribeAutoMode = unsubscribeThresholds = null;
+  unsubscribeSensors = unsubscribeCommands = unsubscribeAutoMode = unsubscribeThresholds = unsubscribeHistory = null;
 }
 
 // ---------- Reports from the device (Bluetooth / Local Wi-Fi) ----------
@@ -292,7 +297,115 @@ function init() {
     onBulb: (v) => sendActuator('bulb', v),
     onUpdateThresholds,
     onTabChange,
+    onRangeChange: (v) => {
+      window.ui.renderHistory(window.state.history || []);
+    },
+    onExportCsv: () => {
+      const entries = window.state.history || [];
+      if (entries.length === 0) {
+        window.ui.toast('No history to export.');
+        return;
+      }
+      const header = 'Timestamp,Temperature (°C),Humidity (%),Light (lux),Motion';
+      const rows = entries.map((en) =>
+        [
+          new Date(Number(en.ts || 0) * 1000).toISOString(),
+          en.temperature ?? '',
+          en.humidity ?? '',
+          en.lightIntensity ?? '',
+          en.motionDetected ? 'Yes' : 'No',
+        ].join(',')
+      );
+      const csv = [header, ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'nestralq-sensor-history.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      window.ui.toast('History exported to CSV.');
+    },
+    onPeriodChange: (v) => {
+      window.ui.renderReports(window.state.history || []);
+    },
+    onExportReportCsv: () => {
+      const entries = window.state.history || [];
+      if (entries.length === 0) {
+        window.ui.toast('No report data to export.');
+        return;
+      }
+      const period = window.state.reportsPeriod || 'daily';
+
+      // Aggregate
+      const groupByDay = (entries) => {
+        const groups = {};
+        entries.forEach((en) => {
+          if (!en.ts) return;
+          const d = new Date(Number(en.ts) * 1000);
+          const key = d.toISOString().split('T')[0];
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(en);
+        });
+        return groups;
+      };
+
+      const groupByWeek = (entries) => {
+        const groups = {};
+        entries.forEach((en) => {
+          if (!en.ts) return;
+          const d = new Date(Number(en.ts) * 1000);
+          const dayOfWeek = d.getUTCDay();
+          const startOfWeek = new Date(d);
+          startOfWeek.setUTCDate(d.getUTCDate() - dayOfWeek);
+          const key = startOfWeek.toISOString().split('T')[0];
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(en);
+        });
+        return groups;
+      };
+
+      const groups = period === 'daily' ? groupByDay(entries) : groupByWeek(entries);
+      const keys = Object.keys(groups).sort().reverse();
+
+      const computeStats = (groupEntries) => {
+        const temps = groupEntries.map((en) => en.temperature).filter((v) => v != null);
+        const humids = groupEntries.map((en) => en.humidity).filter((v) => v != null);
+        const motions = groupEntries.filter((en) => en.motionDetected).length;
+        return {
+          count: groupEntries.length,
+          avgTemp: temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : '-',
+          minTemp: temps.length ? Math.min(...temps).toFixed(1) : '-',
+          maxTemp: temps.length ? Math.max(...temps).toFixed(1) : '-',
+          avgHumidity: humids.length
+            ? (humids.reduce((a, b) => a + b, 0) / humids.length).toFixed(1)
+            : '-',
+          motionCount: motions,
+        };
+      };
+
+      const header = 'Period,Readings,Avg Temp (°C),Min Temp (°C),Max Temp (°C),Avg Humidity (%),Motion Events';
+      const rows = keys.map((key) => {
+        const stats = computeStats(groups[key]);
+        const label = period === 'daily' ? new Date(key + 'T00:00:00Z').toLocaleDateString(undefined, {
+          weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+        }) : 'Week of ' + key;
+        return [label, stats.count, stats.avgTemp, stats.minTemp, stats.maxTemp, stats.avgHumidity, stats.motionCount].join(',');
+      });
+      const csv = [header, ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'nestralq-report-' + period + '.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      window.ui.toast('Report exported to CSV.');
+    },
   });
+
+  window.state.history = window.state.history || [];
+  window.state.reportsPeriod = window.state.reportsPeriod || 'daily';
 
   window.ui.renderAvailability({
     bluetooth: window.bleApi.isSupported(),
@@ -305,6 +418,8 @@ function init() {
   window.ui.renderThresholds(window.state.thresholds);
   window.ui.renderStatus(currentMode(), window.state.link);
   window.ui.switchTab('home');
+  window.ui.renderHistory(window.state.history);
+  window.ui.renderReports(window.state.history);
 
   startFirebaseListeners();
 }
