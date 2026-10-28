@@ -327,45 +327,40 @@ function init() {
       window.ui.toast('History exported to CSV.');
     },
     onPeriodChange: (v) => {
+      window.state.reportsPeriod = v;
       window.ui.renderReports(window.state.history || []);
     },
     onExportReportCsv: () => {
-      const entries = window.state.history || [];
-      if (entries.length === 0) {
+      const allEntries = window.state.history || [];
+      if (allEntries.length === 0) {
         window.ui.toast('No report data to export.');
         return;
       }
-      const period = window.state.reportsPeriod || 'daily';
+      const period = (window.ui.elements.reportsPeriod && window.ui.elements.reportsPeriod.value)
+        || window.state.reportsPeriod
+        || 'all';
+      const periodMs = {
+        '24h': 24 * 60 * 60 * 1000,
+        '7d': 7 * 24 * 60 * 60 * 1000,
+        '30d': 30 * 24 * 60 * 60 * 1000,
+        all: Infinity,
+      }[period] || Infinity;
+      const now = Date.now();
+      const entries = allEntries.filter((en) => {
+        const n = Number(en.ts);
+        if (!Number.isFinite(n) || n <= 0) return false;
+        const ms = n < 1e12 ? n * 1000 : n;
+        return now - ms <= periodMs;
+      });
 
-      // Aggregate
-      const groupByDay = (entries) => {
-        const groups = {};
-        entries.forEach((en) => {
-          if (!en.ts) return;
-          const d = new Date(Number(en.ts) * 1000);
-          const key = d.toISOString().split('T')[0];
-          if (!groups[key]) groups[key] = [];
-          groups[key].push(en);
-        });
-        return groups;
-      };
-
-      const groupByWeek = (entries) => {
-        const groups = {};
-        entries.forEach((en) => {
-          if (!en.ts) return;
-          const d = new Date(Number(en.ts) * 1000);
-          const dayOfWeek = d.getUTCDay();
-          const startOfWeek = new Date(d);
-          startOfWeek.setUTCDate(d.getUTCDate() - dayOfWeek);
-          const key = startOfWeek.toISOString().split('T')[0];
-          if (!groups[key]) groups[key] = [];
-          groups[key].push(en);
-        });
-        return groups;
-      };
-
-      const groups = period === 'daily' ? groupByDay(entries) : groupByWeek(entries);
+      const groups = {};
+      entries.forEach((en) => {
+        const n = Number(en.ts);
+        const ms = n < 1e12 ? n * 1000 : n;
+        const key = new Date(ms + 2 * 60 * 60 * 1000).toISOString().split('T')[0];
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(en);
+      });
       const keys = Object.keys(groups).sort().reverse();
 
       const computeStats = (groupEntries) => {
@@ -387,9 +382,10 @@ function init() {
       const header = 'Period,Readings,Avg Temp (°C),Min Temp (°C),Max Temp (°C),Avg Humidity (%),Motion Events';
       const rows = keys.map((key) => {
         const stats = computeStats(groups[key]);
-        const label = period === 'daily' ? new Date(key + 'T00:00:00Z').toLocaleDateString(undefined, {
+        const label = new Date(key + 'T00:00:00Z').toLocaleDateString(undefined, {
+          timeZone: 'Africa/Blantyre',
           weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-        }) : 'Week of ' + key;
+        });
         return [label, stats.count, stats.avgTemp, stats.minTemp, stats.maxTemp, stats.avgHumidity, stats.motionCount].join(',');
       });
       const csv = [header, ...rows].join('\n');
@@ -405,7 +401,7 @@ function init() {
   });
 
   window.state.history = window.state.history || [];
-  window.state.reportsPeriod = window.state.reportsPeriod || 'daily';
+  window.state.reportsPeriod = window.state.reportsPeriod || 'all';
 
   window.ui.renderAvailability({
     bluetooth: window.bleApi.isSupported(),

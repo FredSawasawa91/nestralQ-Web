@@ -464,6 +464,285 @@ svg {
   cursor: not-allowed;
 }
 
+/* ---------- Reports Chart (matches mobile Readings / Daily range / Heatmap) ---------- */
+.reports-chart-card {
+  width: 100%;
+  background-color: var(--card-bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+  margin-bottom: 1rem;
+  padding: 0.9rem;
+  box-sizing: border-box;
+}
+
+.chart-segment {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  margin-bottom: 0.9rem;
+  border-radius: 10px;
+  background-color: var(--bg-color);
+}
+
+.chart-segment-btn {
+  flex: 1;
+  min-height: 34px;
+  border-radius: 8px;
+  padding: 0.35rem 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--subtext-color);
+}
+
+.chart-segment-btn.active {
+  background-color: var(--primary-color);
+  color: #ffffff;
+}
+
+.chart-readout {
+  min-height: 40px;
+  margin-bottom: 0.65rem;
+}
+
+.chart-readout-value {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.chart-readout-meta {
+  font-size: 0.72rem;
+  color: var(--subtext-color);
+}
+
+.chart-empty {
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 1.25rem 0;
+  color: var(--subtext-color);
+}
+
+.chart-row {
+  display: flex;
+}
+
+.chart-y-axis {
+  width: 34px;
+  height: 190px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-right: 6px;
+  font-size: 0.65rem;
+  color: var(--subtext-color);
+}
+
+.chart-plot {
+  position: relative;
+  flex: 1;
+  height: 190px;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 0 3px;
+  border-left: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.chart-bar-slot {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+}
+
+.chart-bar {
+  width: 100%;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+}
+
+.chart-avg-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed #22c55e;
+  pointer-events: none;
+}
+
+.chart-range-slot {
+  flex: 1;
+  height: 100%;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+}
+
+.chart-range-bar {
+  position: absolute;
+  width: 70%;
+  max-width: 28px;
+  border-radius: 5px;
+  overflow: hidden;
+  background-color: var(--primary-color);
+}
+
+.chart-range-avg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--card-bg);
+}
+
+.chart-x-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-left: 34px;
+  margin-top: 6px;
+  font-size: 0.65rem;
+  color: var(--subtext-color);
+}
+
+.chart-legend {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.65rem;
+  color: var(--subtext-color);
+}
+
+.chart-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.chart-legend-tick {
+  width: 12px;
+  height: 2px;
+}
+
+.heat-hour-row {
+  display: flex;
+  margin-left: 46px;
+  gap: 2px;
+  height: 16px;
+}
+
+.heat-hour-slot {
+  flex: 1;
+  position: relative;
+}
+
+.heat-hour-text {
+  position: absolute;
+  left: 50%;
+  width: 24px;
+  margin-left: -12px;
+  text-align: center;
+  font-size: 0.65rem;
+  color: var(--subtext-color);
+}
+
+.heat-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 3px;
+}
+
+.heat-label {
+  width: 46px;
+  font-size: 0.65rem;
+  color: var(--subtext-color);
+}
+
+.heat-cells {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+}
+
+.heat-cell {
+  flex: 1;
+  height: 24px;
+  border-radius: 3px;
+  padding: 0;
+  border: 0;
+}
+
+.heat-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 14px;
+  font-size: 0.65rem;
+  color: var(--subtext-color);
+}
+
+.heat-legend-swatch {
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.heat-legend-empty {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 10px;
+}
+
+/* ---------- History pagination ---------- */
+.pagination-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.pagination-btn {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  color: var(--primary-color);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.4;
+  color: var(--subtext-color);
+  cursor: not-allowed;
+}
+
+.pagination-page {
+  font-size: 0.9rem;
+  font-weight: 600;
+  min-width: 110px;
+  text-align: center;
+}
+
 /* ---------- Settings Sections ---------- */
 .settings-section {
   background-color: var(--card-bg);

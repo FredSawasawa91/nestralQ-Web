@@ -29,7 +29,10 @@ window.ui.initElements = function () {
     // Reports
     'reports-period', 'export-report-csv-btn',
     'rep-total-days', 'rep-avg-temp', 'rep-min-temp', 'rep-max-temp',
-    'reports-table-body',
+    'reports-table-body', 'reports-chart-card', 'reports-chart-tabs',
+    'reports-chart-readout', 'reports-chart-body',
+    // Pagination
+    'history-pagination', 'history-page-prev', 'history-page-next', 'history-page-label',
   ];
 
   ids.forEach((id) => {
@@ -52,6 +55,10 @@ window.ui.initElements = function () {
   window.ui.elements.histMotion = document.getElementById('hist-motion');
   window.ui.elements.historyTableBody = document.getElementById('history-table-body');
   window.ui.elements.historyChartCanvas = document.getElementById('history-chart');
+  window.ui.elements.historyPagination = document.getElementById('history-pagination');
+  window.ui.elements.historyPagePrev = document.getElementById('history-page-prev');
+  window.ui.elements.historyPageNext = document.getElementById('history-page-next');
+  window.ui.elements.historyPageLabel = document.getElementById('history-page-label');
 
   // Reports element references
   window.ui.elements.reportsPeriod = document.getElementById('reports-period');
@@ -61,6 +68,10 @@ window.ui.initElements = function () {
   window.ui.elements.repMinTemp = document.getElementById('rep-min-temp');
   window.ui.elements.repMaxTemp = document.getElementById('rep-max-temp');
   window.ui.elements.reportsTableBody = document.getElementById('reports-table-body');
+  window.ui.elements.reportsChartCard = document.getElementById('reports-chart-card');
+  window.ui.elements.reportsChartTabs = document.getElementById('reports-chart-tabs');
+  window.ui.elements.reportsChartReadout = document.getElementById('reports-chart-readout');
+  window.ui.elements.reportsChartBody = document.getElementById('reports-chart-body');
 };
 
 window.ui.setIcon = function (svgEl, name) {
@@ -160,12 +171,57 @@ window.ui.renderIp = function (ip) {
 
 // ---------- Sensor History & Reports ----------
 
+const MALAWI_TZ = 'Africa/Blantyre';
+const MALAWI_OFFSET_MS = 2 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const HISTORY_ITEMS_PER_PAGE = 15;
+const CHART_HEIGHT = 190;
+const CHART_MAX_BARS = 20;
+const DAILY_MAX_DAYS = 14;
+const HEATMAP_DAYS = 7;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const PERIOD_MS = {
+  '24h': DAY_MS,
+  '7d': 7 * DAY_MS,
+  '30d': 30 * DAY_MS,
+  all: Infinity,
+};
+const CHART_COLORS = {
+  primary: '#0ea5e9',
+  hot: '#ef4444',
+  cold: '#3b82f6',
+  ok: '#22c55e',
+};
+
+window.ui._historyPage = 1;
+window.ui._reportsChartType = 'bars';
+window.ui._chartSelection = null;
+window.ui._chartReadings = [];
+
 const formatTs = (ts) => {
   if (!ts) return '-';
   const d = new Date(Number(ts) * 1000);
   return d.toLocaleString(undefined, {
+    timeZone: MALAWI_TZ,
     month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
+  });
+};
+
+const timestampMs = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n < 1e12 ? n * 1000 : n;
+};
+
+const filterByPeriod = (entries, period) => {
+  const rangeMs = PERIOD_MS[period] != null ? PERIOD_MS[period] : Infinity;
+  const now = Date.now();
+  return (entries || []).filter((en) => {
+    const ms = timestampMs(en.ts);
+    if (ms == null) return false;
+    return now - ms <= rangeMs;
   });
 };
 
@@ -173,21 +229,9 @@ let historyChart = null;
 
 window.ui.renderHistory = function (entries) {
   const e = window.ui.elements;
-  const now = Date.now();
   const rangeSel = e.historyRange;
   const range = rangeSel ? rangeSel.value : '24h';
-
-  const rangeMs = {
-    '24h': 24 * 60 * 60 * 1000,
-    '7d': 7 * 24 * 60 * 60 * 1000,
-    '30d': 30 * 24 * 60 * 60 * 1000,
-    all: Infinity,
-  }[range] || Infinity;
-
-  const filtered = entries.filter((en) => {
-    if (!en.ts) return false;
-    return now - Number(en.ts) * 1000 <= rangeMs;
-  });
+  const filtered = filterByPeriod(entries, range);
 
   // Stats
   const temps = filtered.map((en) => en.temperature).filter((v) => v != null);
@@ -204,8 +248,14 @@ window.ui.renderHistory = function (entries) {
   if (e.histMinMax) e.histMinMax.textContent = minTemp === '-' ? '- / -' : minTemp + ' / ' + maxTemp;
   if (e.histMotion) e.histMotion.textContent = filtered.filter((en) => en.motionDetected).length;
 
-  // Table
+  // Table (paginated, 15 rows — same as the mobile app)
   const body = e.historyTableBody;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / HISTORY_ITEMS_PER_PAGE));
+  const page = Math.min(Math.max(1, window.ui._historyPage || 1), totalPages);
+  window.ui._historyPage = page;
+  const startIndex = (page - 1) * HISTORY_ITEMS_PER_PAGE;
+  const pageEntries = filtered.slice(startIndex, startIndex + HISTORY_ITEMS_PER_PAGE);
+
   if (body) {
     body.innerHTML = '';
     if (filtered.length === 0) {
@@ -217,19 +267,26 @@ window.ui.renderHistory = function (entries) {
       tr.appendChild(td);
       body.appendChild(tr);
     } else {
-      // Show newest 200 rows in table
-      filtered.slice(0, 200).forEach((en) => {
+      pageEntries.forEach((en) => {
         const tr = document.createElement('tr');
         tr.innerHTML =
           '<td>' + formatTs(en.ts) + '</td>' +
-          '<td>' + (en.temperature != null ? en.temperature.toFixed(1) : '-') + '</td>' +
-          '<td>' + (en.humidity != null ? en.humidity.toFixed(1) : '-') + '</td>' +
+          '<td>' + (en.temperature != null ? Number(en.temperature).toFixed(1) : '-') + '</td>' +
+          '<td>' + (en.humidity != null ? Number(en.humidity).toFixed(1) : '-') + '</td>' +
           '<td>' + (en.lightIntensity != null ? Math.round(en.lightIntensity) : '-') + '</td>' +
           '<td><span class="' + (en.motionDetected ? 'motion-yes' : 'motion-no') + '">' +
           (en.motionDetected ? 'Yes' : 'No') + '</span></td>';
         body.appendChild(tr);
       });
     }
+  }
+
+  if (e.historyPagination) {
+    const showPager = filtered.length > 0;
+    e.historyPagination.hidden = !showPager;
+    if (e.historyPageLabel) e.historyPageLabel.textContent = 'Page ' + page + ' of ' + totalPages;
+    if (e.historyPagePrev) e.historyPagePrev.disabled = page <= 1;
+    if (e.historyPageNext) e.historyPageNext.disabled = page >= totalPages;
   }
 
   // Chart (temperature line)
@@ -299,86 +356,410 @@ window.ui.renderHistory = function (entries) {
 
 window.ui.renderChart = window.ui.renderHistory;
 
-// ---------- Reports ----------
+const localDay = (ts) => Math.floor((ts + MALAWI_OFFSET_MS) / DAY_MS);
+const localHour = (ts) =>
+  Math.floor(((((ts + MALAWI_OFFSET_MS) % DAY_MS) + DAY_MS) % DAY_MS) / HOUR_MS);
+const dayLabel = (dayNumber) => {
+  const date = new Date(dayNumber * DAY_MS);
+  return MONTHS[date.getUTCMonth()] + ' ' + date.getUTCDate();
+};
+const pad2 = (n) => String(n).padStart(2, '0');
+const computeScale = (rawMin, rawMax) => {
+  const pad = Math.max(1, (rawMax - rawMin) * 0.15);
+  const min = rawMin - pad;
+  const max = rawMax + pad;
+  return { min, max, range: max - min || 1 };
+};
+const hexToRgb = (hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const lerpColor = (from, to, t) => {
+  const a = hexToRgb(from);
+  const b = hexToRgb(to);
+  const c = a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  return 'rgb(' + c[0] + ', ' + c[1] + ', ' + c[2] + ')';
+};
+const heatColor = (t) => {
+  if (t <= 0.5) return lerpColor(CHART_COLORS.cold, CHART_COLORS.ok, t * 2);
+  return lerpColor(CHART_COLORS.ok, CHART_COLORS.hot, (t - 0.5) * 2);
+};
 
-const formatPeriod = (key, period) => {
-  if (!key) return '-';
-  if (period === 'daily') {
-    const d = new Date(key + 'T00:00:00Z');
-    return d.toLocaleDateString(undefined, {
-      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+const normalizeReadings = (entries) => {
+  return (entries || [])
+    .map((item, index) => {
+      const timestamp = timestampMs(item.ts);
+      const value = item.temperature == null || item.temperature === ''
+        ? null
+        : Number(item.temperature);
+      return {
+        id: String(item.id || item.key || (timestamp ?? 'unknown') + '-' + index),
+        timestamp,
+        value: Number.isFinite(value) ? value : null,
+        sensorName: item.sensorName || item.deviceName || item.deviceId || 'Unknown sensor',
+      };
+    })
+    .filter((item) => item.timestamp !== null)
+    .sort((a, b) => b.timestamp - a.timestamp);
+};
+
+const setReadout = (title, meta, hint) => {
+  const el = window.ui.elements.reportsChartReadout;
+  if (!el) return;
+  if (title) {
+    el.innerHTML =
+      '<div class="chart-readout-value">' + title + '</div>' +
+      '<div class="chart-readout-meta">' + meta + '</div>';
+  } else {
+    el.innerHTML = '<div class="chart-readout-meta">' + hint + '</div>';
+  }
+};
+
+const legendHtml = (items) => {
+  return '<div class="chart-legend">' + items.map((item) => {
+    const mark = item.tick
+      ? '<span class="chart-legend-tick" style="background:' + item.color + '"></span>'
+      : '<span class="chart-legend-dot" style="background:' + item.color + '"></span>';
+    return '<span class="chart-legend-item">' + mark + item.label + '</span>';
+  }).join('') + '</div>';
+};
+
+function renderReadingsBarChart(readings) {
+  const body = window.ui.elements.reportsChartBody;
+  const data = readings.filter((r) => r.value !== null).slice(0, CHART_MAX_BARS).reverse();
+  if (data.length < 2) {
+    setReadout(null, null, '');
+    body.innerHTML = '<p class="chart-empty">Not enough data to draw a chart.</p>';
+    return;
+  }
+
+  const vals = data.map((d) => d.value);
+  const rawMin = Math.min.apply(null, vals);
+  const rawMax = Math.max.apply(null, vals);
+  const scale = computeScale(rawMin, rawMax);
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const avgBottom = ((avg - scale.min) / scale.range) * CHART_HEIGHT;
+
+  const barColor = (v) => {
+    if (v >= avg + (rawMax - avg) * 0.5) return CHART_COLORS.hot;
+    if (v <= avg - (avg - rawMin) * 0.5) return CHART_COLORS.cold;
+    return CHART_COLORS.primary;
+  };
+
+  const selected = window.ui._chartSelection;
+  const selectedItem = selected != null && selected < data.length ? data[selected] : null;
+  setReadout(
+    selectedItem ? selectedItem.value.toFixed(1) + '°' : null,
+    selectedItem ? selectedItem.sensorName + ' · ' + formatTs(selectedItem.timestamp / 1000) : null,
+    'Tap a bar to see its reading'
+  );
+
+  const bars = data.map((d, i) => {
+    const h = Math.max(3, ((d.value - scale.min) / scale.range) * CHART_HEIGHT);
+    const opacity = selected == null || selected === i ? 1 : 0.4;
+    return (
+      '<button type="button" class="chart-bar-slot" data-index="' + i + '">' +
+        '<span class="chart-bar" style="height:' + h + 'px;background:' + barColor(d.value) +
+        ';opacity:' + opacity + '"></span>' +
+      '</button>'
+    );
+  }).join('');
+
+  body.innerHTML =
+    '<div class="chart-row">' +
+      '<div class="chart-y-axis">' +
+        '<span>' + scale.max.toFixed(0) + '°</span>' +
+        '<span>' + ((scale.max + scale.min) / 2).toFixed(0) + '°</span>' +
+        '<span>' + scale.min.toFixed(0) + '°</span>' +
+      '</div>' +
+      '<div class="chart-plot">' +
+        '<div class="chart-avg-line" style="bottom:' + avgBottom + 'px"></div>' +
+        bars +
+      '</div>' +
+    '</div>' +
+    '<div class="chart-x-axis">' +
+      '<span>' + formatTs(data[0].timestamp / 1000) + '</span>' +
+      '<span>' + formatTs(data[data.length - 1].timestamp / 1000) + '</span>' +
+    '</div>' +
+    legendHtml([
+      { color: CHART_COLORS.hot, label: 'High' },
+      { color: CHART_COLORS.primary, label: 'Normal' },
+      { color: CHART_COLORS.cold, label: 'Low' },
+      { color: CHART_COLORS.ok, label: 'Average' },
+    ]);
+
+  body.querySelectorAll('.chart-bar-slot').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.index);
+      window.ui._chartSelection = window.ui._chartSelection === i ? null : i;
+      renderReadingsBarChart(readings);
+    });
+  });
+}
+
+function renderDailyRangeChart(readings) {
+  const body = window.ui.elements.reportsChartBody;
+  const map = new Map();
+  readings.forEach((r) => {
+    if (r.value === null) return;
+    const day = localDay(r.timestamp);
+    const entry = map.get(day);
+    if (!entry) {
+      map.set(day, { day, min: r.value, max: r.value, sum: r.value, count: 1 });
+    } else {
+      entry.min = Math.min(entry.min, r.value);
+      entry.max = Math.max(entry.max, r.value);
+      entry.sum += r.value;
+      entry.count += 1;
+    }
+  });
+  const days = Array.from(map.values())
+    .sort((a, b) => a.day - b.day)
+    .slice(-DAILY_MAX_DAYS)
+    .map((entry) => Object.assign({}, entry, { avg: entry.sum / entry.count }));
+
+  if (days.length === 0) {
+    setReadout(null, null, '');
+    body.innerHTML = '<p class="chart-empty">No temperature readings in this period.</p>';
+    return;
+  }
+
+  const rawMin = Math.min.apply(null, days.map((d) => d.min));
+  const rawMax = Math.max.apply(null, days.map((d) => d.max));
+  const scale = computeScale(rawMin, rawMax);
+  const selected = window.ui._chartSelection;
+  const selectedDay = selected != null && selected < days.length ? days[selected] : null;
+  setReadout(
+    selectedDay ? selectedDay.min.toFixed(1) + '° – ' + selectedDay.max.toFixed(1) + '°' : null,
+    selectedDay
+      ? dayLabel(selectedDay.day) + ' · avg ' + selectedDay.avg.toFixed(1) + '° · ' + selectedDay.count + ' readings'
+      : null,
+    'Tap a day to see its lowest, highest and average'
+  );
+
+  const bars = days.map((d, i) => {
+    const bottom = ((d.min - scale.min) / scale.range) * CHART_HEIGHT;
+    const height = Math.max(4, ((d.max - d.min) / scale.range) * CHART_HEIGHT);
+    const avgInBar = Math.min(height - 2, Math.max(0, ((d.avg - d.min) / scale.range) * CHART_HEIGHT));
+    const opacity = selected == null || selected === i ? 1 : 0.4;
+    return (
+      '<button type="button" class="chart-range-slot" data-index="' + i + '">' +
+        '<span class="chart-range-bar" style="bottom:' + bottom + 'px;height:' + height +
+        'px;opacity:' + opacity + '">' +
+          '<span class="chart-range-avg" style="bottom:' + avgInBar + 'px"></span>' +
+        '</span>' +
+      '</button>'
+    );
+  }).join('');
+
+  body.innerHTML =
+    '<div class="chart-row">' +
+      '<div class="chart-y-axis">' +
+        '<span>' + scale.max.toFixed(0) + '°</span>' +
+        '<span>' + ((scale.max + scale.min) / 2).toFixed(0) + '°</span>' +
+        '<span>' + scale.min.toFixed(0) + '°</span>' +
+      '</div>' +
+      '<div class="chart-plot">' + bars + '</div>' +
+    '</div>' +
+    '<div class="chart-x-axis">' +
+      '<span>' + dayLabel(days[0].day) + '</span>' +
+      (days.length > 1 ? '<span>' + dayLabel(days[days.length - 1].day) + '</span>' : '') +
+    '</div>' +
+    legendHtml([
+      { color: CHART_COLORS.primary, label: 'Lowest to highest' },
+      { color: 'currentColor', label: 'Daily average', tick: true },
+    ]);
+
+  body.querySelectorAll('.chart-range-slot').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.index);
+      window.ui._chartSelection = window.ui._chartSelection === i ? null : i;
+      renderDailyRangeChart(readings);
+    });
+  });
+}
+
+function renderHeatmapChart(readings) {
+  const body = window.ui.elements.reportsChartBody;
+  const valid = readings.filter((r) => r.value !== null);
+  if (valid.length === 0) {
+    setReadout(null, null, '');
+    body.innerHTML = '<p class="chart-empty">No temperature readings in this period.</p>';
+    return;
+  }
+
+  const lastDay = localDay(valid[0].timestamp);
+  const firstDay = lastDay - (HEATMAP_DAYS - 1);
+  const cellMap = new Map();
+  valid.forEach((r) => {
+    const day = localDay(r.timestamp);
+    if (day < firstDay || day > lastDay) return;
+    const key = day + '-' + localHour(r.timestamp);
+    const entry = cellMap.get(key);
+    if (!entry) cellMap.set(key, { sum: r.value, count: 1 });
+    else { entry.sum += r.value; entry.count += 1; }
+  });
+
+  let rawMin = Infinity;
+  let rawMax = -Infinity;
+  cellMap.forEach((entry) => {
+    const avg = entry.sum / entry.count;
+    rawMin = Math.min(rawMin, avg);
+    rawMax = Math.max(rawMax, avg);
+  });
+
+  if (rawMin === Infinity) {
+    setReadout(null, null, '');
+    body.innerHTML = '<p class="chart-empty">No temperature readings in this period.</p>';
+    return;
+  }
+
+  const rows = [];
+  for (let day = lastDay; day >= firstDay; day -= 1) {
+    const cells = [];
+    for (let hour = 0; hour < 24; hour += 1) {
+      const entry = cellMap.get(day + '-' + hour);
+      cells.push(entry ? { hour, avg: entry.sum / entry.count, count: entry.count } : null);
+    }
+    rows.push({ day, cells });
+  }
+
+  const selected = window.ui._chartSelection;
+  const selectedCell = selected
+    ? (rows.find((row) => row.day === selected.day) || { cells: [] }).cells[selected.hour]
+    : null;
+  setReadout(
+    selectedCell ? selectedCell.avg.toFixed(1) + '°' : null,
+    selectedCell
+      ? dayLabel(selected.day) + ' · ' + pad2(selected.hour) + ':00 – ' +
+        pad2((selected.hour + 1) % 24) + ':00 · ' + selectedCell.count + ' readings'
+      : null,
+    "Tap a cell to see that hour's average"
+  );
+
+  const spread = rawMax - rawMin;
+  const hourLabels = Array.from({ length: 24 }, (_, hour) => {
+    return '<div class="heat-hour-slot">' +
+      (hour % 6 === 0 ? '<span class="heat-hour-text">' + pad2(hour) + '</span>' : '') +
+      '</div>';
+  }).join('');
+
+  const emptyBg = getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim() || '#eee';
+  const grid = rows.map((row) => {
+    const cells = row.cells.map((cell, hour) => {
+      const isSelected = selected && selected.day === row.day && selected.hour === hour;
+      if (!cell) {
+        return '<span class="heat-cell" style="background:' + emptyBg + '"></span>';
+      }
+      const t = spread > 0 ? (cell.avg - rawMin) / spread : 0.5;
+      return (
+        '<button type="button" class="heat-cell" data-day="' + row.day + '" data-hour="' + hour +
+        '" style="background:' + heatColor(t) +
+        (isSelected ? ';outline:1.5px solid currentColor' : '') + '"></button>'
+      );
+    }).join('');
+    return '<div class="heat-row"><span class="heat-label">' + dayLabel(row.day) +
+      '</span><div class="heat-cells">' + cells + '</div></div>';
+  }).join('');
+
+  const swatches = [0, 0.25, 0.5, 0.75, 1].map((t) =>
+    '<span class="heat-legend-swatch" style="background:' + heatColor(t) + '"></span>'
+  ).join('');
+
+  body.innerHTML =
+    '<div class="heat-hour-row">' + hourLabels + '</div>' +
+    grid +
+    '<div class="heat-legend">' +
+      '<span>' + rawMin.toFixed(1) + '°</span>' + swatches +
+      '<span>' + rawMax.toFixed(1) + '°</span>' +
+      '<span class="heat-legend-empty">' +
+        '<span class="heat-legend-swatch" style="background:' + emptyBg + '"></span>No data' +
+      '</span>' +
+    '</div>';
+
+  body.querySelectorAll('.heat-cell[data-day]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const next = { day: Number(btn.dataset.day), hour: Number(btn.dataset.hour) };
+      const cur = window.ui._chartSelection;
+      window.ui._chartSelection = cur && cur.day === next.day && cur.hour === next.hour ? null : next;
+      renderHeatmapChart(readings);
+    });
+  });
+}
+
+window.ui.renderReportsCharts = function (entries) {
+  const e = window.ui.elements;
+  if (!e.reportsChartBody) return;
+
+  window.ui._chartSourceEntries = entries;
+  const readings = normalizeReadings(entries);
+  window.ui._chartReadings = readings;
+
+  const type = window.ui._reportsChartType || 'bars';
+  if (e.reportsChartTabs) {
+    e.reportsChartTabs.querySelectorAll('.chart-segment-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.chart === type);
     });
   }
-  return 'Week of ' + key;
+
+  if (type === 'range') renderDailyRangeChart(readings);
+  else if (type === 'heatmap') renderHeatmapChart(readings);
+  else renderReadingsBarChart(readings);
+};
+
+const formatDayKey = (key) => {
+  if (!key) return '-';
+  const d = new Date(key + 'T00:00:00Z');
+  return d.toLocaleDateString(undefined, {
+    timeZone: MALAWI_TZ,
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+  });
 };
 
 window.ui.renderReports = function (entries) {
   const e = window.ui.elements;
   const periodSel = e.reportsPeriod;
-  const period = periodSel ? periodSel.value : 'daily';
+  const period = periodSel ? periodSel.value : 'all';
+  const filtered = filterByPeriod(entries, period);
 
-  // ---------- Aggregate ----------
-  const groupByDay = (entries) => {
-    const groups = {};
-    entries.forEach((en) => {
-      if (!en.ts) return;
-      const d = new Date(Number(en.ts) * 1000);
-      const key = d.toISOString().split('T')[0];
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(en);
-    });
-    return groups;
-  };
-
-  const groupByWeek = (entries) => {
-    const groups = {};
-    entries.forEach((en) => {
-      if (!en.ts) return;
-      const d = new Date(Number(en.ts) * 1000);
-      const dayOfWeek = d.getUTCDay();
-      const startOfWeek = new Date(d);
-      startOfWeek.setUTCDate(d.getUTCDate() - dayOfWeek);
-      const key = startOfWeek.toISOString().split('T')[0];
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(en);
-    });
-    return groups;
-  };
-
-  const groups = period === 'daily' ? groupByDay(entries) : groupByWeek(entries);
+  const groups = {};
+  filtered.forEach((en) => {
+    const ms = timestampMs(en.ts);
+    if (ms == null) return;
+    const key = new Date(ms + MALAWI_OFFSET_MS).toISOString().split('T')[0];
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(en);
+  });
   const keys = Object.keys(groups).sort().reverse();
 
-  // ---------- Stats per group ----------
   const computeStats = (groupEntries) => {
-    const temps = groupEntries.map((en) => en.temperature).filter((v) => v != null);
-    const humids = groupEntries.map((en) => en.humidity).filter((v) => v != null);
+    const temps = groupEntries.map((en) => en.temperature).filter((v) => v != null && Number.isFinite(Number(v)));
+    const humids = groupEntries.map((en) => en.humidity).filter((v) => v != null && Number.isFinite(Number(v)));
     const motions = groupEntries.filter((en) => en.motionDetected).length;
     return {
       count: groupEntries.length,
-      avgTemp: temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : '-',
-      minTemp: temps.length ? Math.min(...temps).toFixed(1) : '-',
-      maxTemp: temps.length ? Math.max(...temps).toFixed(1) : '-',
+      avgTemp: temps.length ? (temps.reduce((a, b) => a + Number(b), 0) / temps.length).toFixed(1) : '-',
+      minTemp: temps.length ? Math.min.apply(null, temps.map(Number)).toFixed(1) : '-',
+      maxTemp: temps.length ? Math.max.apply(null, temps.map(Number)).toFixed(1) : '-',
       avgHumidity: humids.length
-        ? (humids.reduce((a, b) => a + b, 0) / humids.length).toFixed(1)
+        ? (humids.reduce((a, b) => a + Number(b), 0) / humids.length).toFixed(1)
         : '-',
       motionCount: motions,
     };
   };
 
-  // ---------- Overall stats ----------
-  const allTemps = entries.map((en) => en.temperature).filter((v) => v != null);
+  const allTemps = filtered.map((en) => en.temperature).filter((v) => v != null && Number.isFinite(Number(v))).map(Number);
   if (e.repTotalDays) e.repTotalDays.textContent = keys.length;
   if (e.repAvgTemp) e.repAvgTemp.textContent = allTemps.length
     ? (allTemps.reduce((a, b) => a + b, 0) / allTemps.length).toFixed(1) + '°C'
     : '-';
   if (e.repMinTemp) e.repMinTemp.textContent = allTemps.length
-    ? Math.min(...allTemps).toFixed(1) + '°C'
+    ? Math.min.apply(null, allTemps).toFixed(1) + '°C'
     : '-';
   if (e.repMaxTemp) e.repMaxTemp.textContent = allTemps.length
-    ? Math.max(...allTemps).toFixed(1) + '°C'
+    ? Math.max.apply(null, allTemps).toFixed(1) + '°C'
     : '-';
 
-  // ---------- Table ----------
   const body = e.reportsTableBody;
   if (body) {
     body.innerHTML = '';
@@ -395,7 +776,7 @@ window.ui.renderReports = function (entries) {
         const stats = computeStats(groups[key]);
         const tr = document.createElement('tr');
         tr.innerHTML =
-          '<td>' + formatPeriod(key, period) + '</td>' +
+          '<td>' + formatDayKey(key) + '</td>' +
           '<td>' + stats.count + '</td>' +
           '<td>' + stats.avgTemp + '°C</td>' +
           '<td>' + stats.minTemp + '°C</td>' +
@@ -406,6 +787,8 @@ window.ui.renderReports = function (entries) {
       });
     }
   }
+
+  window.ui.renderReportsCharts(filtered);
 };
 
 // ---------- Connection status ----------
@@ -574,7 +957,31 @@ window.ui.setupEventListeners = function (callbacks) {
   // History range selector
   if (e.historyRange) {
     e.historyRange.addEventListener('change', () => {
+      window.ui._historyPage = 1;
       if (callbacks.onRangeChange) callbacks.onRangeChange(e.historyRange.value);
+    });
+  }
+
+  if (e.historyPagePrev) {
+    e.historyPagePrev.addEventListener('click', () => {
+      window.ui._historyPage = Math.max(1, (window.ui._historyPage || 1) - 1);
+      window.ui.renderHistory(window.state.history || []);
+    });
+  }
+  if (e.historyPageNext) {
+    e.historyPageNext.addEventListener('click', () => {
+      window.ui._historyPage = (window.ui._historyPage || 1) + 1;
+      window.ui.renderHistory(window.state.history || []);
+    });
+  }
+
+  if (e.reportsChartTabs) {
+    e.reportsChartTabs.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('[data-chart]');
+      if (!btn) return;
+      window.ui._reportsChartType = btn.dataset.chart;
+      window.ui._chartSelection = null;
+      window.ui.renderReportsCharts(window.ui._chartSourceEntries || window.state.history || []);
     });
   }
 
