@@ -77,6 +77,18 @@
       );
       return () => r.off('value', cb2);
     },
+
+    writeSensorLog: (entry) => {
+      const ts = Number(entry && entry.ts);
+      if (!Number.isFinite(ts) || ts <= 0) return Promise.resolve(false);
+      return write('sensorLog/' + ts, {
+        temperature: Number(entry.temperature ?? 0),
+        humidity: Number(entry.humidity ?? 0),
+        lightIntensity: Number(entry.lightIntensity ?? 0),
+        motionDetected: !!entry.motionDetected,
+        ts: ts,
+      });
+    },
   };
 
   console.log('[Firebase] Ready');

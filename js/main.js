@@ -60,8 +60,7 @@ function startFirebaseListeners() {
   });
 
   unsubscribeHistory = window.fbApi.startHistoryListener((data) => {
-    window.state.history = data;
-    window.ui.renderHistory(data);
+    applyRemoteHistory(data);
   });
 }
 
@@ -70,7 +69,60 @@ function stopFirebaseListeners() {
   if (unsubscribeCommands) unsubscribeCommands();
   if (unsubscribeAutoMode) unsubscribeAutoMode();
   if (unsubscribeThresholds) unsubscribeThresholds();
+  if (unsubscribeHistory) unsubscribeHistory();
   unsubscribeSensors = unsubscribeCommands = unsubscribeAutoMode = unsubscribeThresholds = unsubscribeHistory = null;
+}
+
+// ---------- Offline history (Bluetooth / Local Wi-Fi) ----------
+window.state.remoteHistory = window.state.remoteHistory || [];
+let historyFlushInFlight = false;
+
+function refreshHistoryUi(entries) {
+  window.state.history = entries || [];
+  window.ui.renderHistory(window.state.history);
+  window.ui.renderReports(window.state.history);
+}
+
+async function applyRemoteHistory(data) {
+  window.state.remoteHistory = data || [];
+  if (window.historyStore) {
+    await window.historyStore.markPresentInRemote(window.state.remoteHistory);
+    refreshHistoryUi(window.historyStore.merge(window.state.remoteHistory));
+  } else {
+    refreshHistoryUi(window.state.remoteHistory);
+  }
+}
+
+async function recordLocalHistory(sensors) {
+  if (!window.historyStore) return;
+  const mode = currentMode();
+  if (mode !== 'bluetooth' && mode !== 'local') return;
+  const entry = await window.historyStore.record(sensors);
+  if (!entry) return;
+  refreshHistoryUi(window.historyStore.merge(window.state.remoteHistory || []));
+  flushHistoryToFirebase();
+}
+
+async function flushHistoryToFirebase() {
+  if (historyFlushInFlight) return;
+  if (!window.historyStore || !isFirebaseReady()) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+
+  const pending = window.historyStore.pending();
+  if (!pending.length) return;
+
+  historyFlushInFlight = true;
+  const synced = [];
+  try {
+    for (const entry of pending) {
+      const ok = await window.fbApi.writeSensorLog(entry);
+      if (ok) synced.push(entry.ts);
+      else break;
+    }
+    if (synced.length) await window.historyStore.markSynced(synced);
+  } finally {
+    historyFlushInFlight = false;
+  }
 }
 
 // ---------- Reports from the device (Bluetooth / Local Wi-Fi) ----------
@@ -103,6 +155,7 @@ function applyReport(r) {
 
   window.ui.renderSensors(s.sensors);
   window.ui.renderDevices(s.device);
+  recordLocalHistory(s.sensors);
 }
 
 // ---------- Connection modes ----------
@@ -193,6 +246,7 @@ function onSelectMode(mode) {
   if (mode === 'online') {
     setLink({ status: 'connected' });
     startFirebaseListeners();
+    flushHistoryToFirebase();
   } else if (mode === 'bluetooth') {
     startBluetooth(id);
   } else {
@@ -284,8 +338,9 @@ function onTabChange(tabName) {
 }
 
 // ---------- Initialize ----------
-function init() {
+async function init() {
   console.log('[App] Initializing NestralQ Web...');
+  if (window.historyStore) await window.historyStore.init();
 
   window.ui.setupEventListeners({
     onThemeToggle,
@@ -400,7 +455,9 @@ function init() {
     },
   });
 
-  window.state.history = window.state.history || [];
+  window.state.remoteHistory = window.state.remoteHistory || [];
+  window.state.history =
+    (window.historyStore && window.historyStore.merge(window.state.remoteHistory)) || [];
   window.state.reportsPeriod = window.state.reportsPeriod || 'all';
 
   window.ui.renderAvailability({
@@ -418,6 +475,9 @@ function init() {
   window.ui.renderReports(window.state.history);
 
   startFirebaseListeners();
+  flushHistoryToFirebase();
+  window.addEventListener('online', () => flushHistoryToFirebase());
+  setInterval(() => flushHistoryToFirebase(), 15000);
 }
 
 init();
