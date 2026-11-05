@@ -4,7 +4,7 @@
 // Works in the Electron app. NOT available on https pages (mixed content).
 
 (function () {
-  const TIMEOUT_MS = 3000;
+  const TIMEOUT_MS = 8000;
   const POLL_MS = 1500;
   const RETRY_MS = 3000;
   const MAX_FAILS = 3;
@@ -22,25 +22,65 @@
   const isValidIp = (value) =>
     /^(\d{1,3}\.){3}\d{1,3}$/.test(value) && value.split('.').every((n) => Number(n) <= 255);
 
-  async function request(address, path) {
+  function unreachable(address) {
+    return new Error(
+      'Cannot reach ' + address + '. Check that this computer and the ESP32 are on the same Wi-Fi.'
+    );
+  }
+
+  function isReachabilityError(error) {
+    const name = error && error.name;
+    const msg = String((error && error.message) || error || '');
+    return (
+      name === 'AbortError' ||
+      error instanceof TypeError ||
+      /canceled|cancelled|aborted|timeout|failed to fetch|network|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT/i.test(msg)
+    );
+  }
+
+  function parseJson(body) {
+    try {
+      return JSON.parse(body);
+    } catch {
+      throw new Error('ESP32 sent a reply that was not JSON.');
+    }
+  }
+
+  async function requestViaMain(address, path) {
+    const res = await window.esp32http.request('http://' + address + path);
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error('ESP32 replied with status ' + res.status);
+    }
+    return parseJson(res.body);
+  }
+
+  async function requestViaFetch(address, path) {
     const controller = new AbortController();
     const abortTimer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
       const res = await fetch('http://' + address + path, {
+        method: 'GET',
         signal: controller.signal,
         cache: 'no-store',
+        mode: 'cors',
+        targetAddressSpace: 'local',
       });
       if (!res.ok) throw new Error('ESP32 replied with status ' + res.status);
       return await res.json();
-    } catch (error) {
-      if (error.name === 'AbortError' || error instanceof TypeError) {
-        throw new Error(
-          'Cannot reach ' + address + '. Check that this computer and the ESP32 are on the same Wi-Fi.'
-        );
-      }
-      throw error;
     } finally {
       clearTimeout(abortTimer);
+    }
+  }
+
+  async function request(address, path) {
+    try {
+      if (window.esp32http && typeof window.esp32http.request === 'function') {
+        return await requestViaMain(address, path);
+      }
+      return await requestViaFetch(address, path);
+    } catch (error) {
+      if (isReachabilityError(error)) throw unreachable(address);
+      throw error;
     }
   }
 

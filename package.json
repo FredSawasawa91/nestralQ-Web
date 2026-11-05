@@ -15,6 +15,7 @@
       "css/**/*",
       "js/**/*",
       "electron-main.js",
+      "preload.js",
       "build/icon.*"
     ],
     "win": { "target": "nsis" },

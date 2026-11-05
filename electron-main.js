@@ -1,4 +1,5 @@
-const { app, BrowserWindow, shell, Menu } = require('electron');
+const { app, BrowserWindow, shell, Menu, ipcMain, session } = require('electron');
+const http = require('http');
 const path = require('path');
 
 // Allow only one window/instance of the app
@@ -10,6 +11,60 @@ if (!app.requestSingleInstanceLock()) {
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-experimental-web-platform-features');
 }
+
+// Chromium otherwise cancels renderer fetch() to 192.168.x.x (Local Network Access).
+app.commandLine.appendSwitch(
+  'disable-features',
+  'BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessRespectPreflightResults,LocalNetworkAccessChecks,LocalNetworkAccessChecksWebSockets'
+);
+
+function isPrivateIpv4(host) {
+  if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) return false;
+  const p = host.split('.').map(Number);
+  if (p.some((n) => n > 255)) return false;
+  return (
+    p[0] === 10 ||
+    p[0] === 127 ||
+    (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
+    (p[0] === 192 && p[1] === 168)
+  );
+}
+
+function isAllowedEsp32Url(urlString) {
+  let url;
+  try {
+    url = new URL(urlString);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'http:') return false;
+  if (url.port && url.port !== '80') return false;
+  if (!isPrivateIpv4(url.hostname)) return false;
+  return url.pathname === '/status' || url.pathname === '/cmd';
+}
+
+ipcMain.handle('esp32-http', (_event, urlString) => {
+  if (!isAllowedEsp32Url(urlString)) {
+    return Promise.reject(new Error('Invalid ESP32 address.'));
+  }
+  return new Promise((resolve, reject) => {
+    const req = http.get(urlString, { timeout: 8000 }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        resolve({
+          status: res.statusCode,
+          body: Buffer.concat(chunks).toString('utf8'),
+        });
+      });
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('timeout'));
+    });
+    req.on('error', reject);
+  });
+});
 
 let win;
 
@@ -58,10 +113,22 @@ function createWindow() {
     backgroundColor: '#1a1a1a',
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  const grantLocalNetwork = (permission) =>
+    permission === 'local-network-access' || permission === 'local-network';
+
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(grantLocalNetwork(permission) || true);
+  });
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => {
+    if (grantLocalNetwork(permission)) return true;
+    return true;
   });
 
   Menu.setApplicationMenu(null); // hides the default File/Edit/View menu
@@ -104,7 +171,8 @@ app.on('activate', () => {
 
 
 
-/*const { app, BrowserWindow, shell, Menu } = require('electron');
+/*const { app, BrowserWindow, shell, Menu, ipcMain, session } = require('electron');
+const http = require('http');
 const path = require('path');
 
 // Allow only one window/instance of the app
