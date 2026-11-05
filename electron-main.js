@@ -30,6 +30,15 @@ function isPrivateIpv4(host) {
   );
 }
 
+function isLocalHostname(host) {
+  return (
+    typeof host === 'string' &&
+    host.length <= 253 &&
+    host.toLowerCase().endsWith('.local') &&
+    host.split('.').every((part) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(part))
+  );
+}
+
 function isAllowedEsp32Url(urlString) {
   let url;
   try {
@@ -39,7 +48,7 @@ function isAllowedEsp32Url(urlString) {
   }
   if (url.protocol !== 'http:') return false;
   if (url.port && url.port !== '80') return false;
-  if (!isPrivateIpv4(url.hostname)) return false;
+  if (!isPrivateIpv4(url.hostname) && !isLocalHostname(url.hostname)) return false;
   return url.pathname === '/status' || url.pathname === '/cmd';
 }
 

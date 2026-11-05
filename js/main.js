@@ -10,6 +10,8 @@ window.state.setTheme(initialTheme);
 
 // ---------- Helpers ----------
 let sessionId = 0; // bumped on every mode change, so late async results can be ignored
+let provision = { phase: 'idle', error: null };
+let provisionTimer = null;
 
 function currentMode() {
   return window.state.device.connectionMode;
@@ -18,6 +20,31 @@ function currentMode() {
 function setLink(link) {
   window.state.setLink(link);
   window.ui.renderStatus(currentMode(), window.state.link);
+  renderWifi();
+}
+
+function renderWifi() {
+  window.ui.renderWifiSetup(
+    window.state.net,
+    provision,
+    window.bleApi.isConnected()
+  );
+}
+
+function setProvision(action) {
+  const wasBusy = provision.phase === 'sending' || provision.phase === 'waiting';
+  provision = window.NestralQNet.provisionReducer(provision, action);
+  const busy = provision.phase === 'sending' || provision.phase === 'waiting';
+  if (!wasBusy && busy) {
+    provisionTimer = setTimeout(
+      () => setProvision({ type: 'TIMEOUT' }),
+      window.NestralQNet.PROVISION_TIMEOUT_MS
+    );
+  } else if (wasBusy && !busy) {
+    clearTimeout(provisionTimer);
+    provisionTimer = null;
+  }
+  renderWifi();
 }
 
 function isFirebaseReady() {
@@ -165,6 +192,45 @@ function leaveCurrentMode() {
   window.localApi.stop();
 }
 
+function fallbackToOnline(message) {
+  window.localApi.stop();
+  window.state.setConnectionMode('online');
+  setLink({ status: 'connected', error: message });
+  startFirebaseListeners();
+  flushHistoryToFirebase();
+}
+
+function applyNetReport(text) {
+  const parsed = window.NestralQNet.parseNetStatus(text);
+  if (!parsed) return;
+
+  window.state.setNetStatus(parsed);
+  if (parsed.state === 'CONNECTED' && window.localApi.isValidIp(parsed.ip)) {
+    const deviceId = window.bleApi.getDeviceId();
+    window.state.setLocalEndpoint(deviceId || 'default', parsed.ip, parsed.hostname);
+    window.localApi.setFallbackHost(parsed.hostname);
+    if (window.ui.elements.wifiSsid && !window.ui.elements.wifiSsid.value) {
+      window.ui.elements.wifiSsid.value = parsed.ssid;
+    }
+    window.localApi.setTarget(parsed.ip);
+  } else if (parsed.state === 'DISCONNECTED' && !parsed.ip) {
+    window.state.clearLocalEndpoint(window.bleApi.getDeviceId());
+    window.localApi.setTarget('');
+    if (currentMode() === 'local') {
+      fallbackToOnline('The device has no active Wi-Fi address. Switched to Online/Firebase mode.');
+    }
+  }
+
+  if (parsed.state === 'CONNECTING' || parsed.state === 'CONNECTED' || parsed.state === 'FAILED') {
+    setProvision({
+      type: 'NET',
+      state: parsed.state,
+      revision: window.state.net.revision,
+    });
+  }
+  renderWifi();
+}
+
 function reportLocalError(message) {
   // Stay in the current mode (Bluetooth or Local Wi-Fi) and just report the error.
   // Do not silently switch to Online mode.
@@ -185,8 +251,17 @@ async function startBluetooth(id) {
         const parsed = window.bleApi.parseData(text);
         if (parsed) applyReport(parsed);
       },
+      onNet: (text) => {
+        if (id === sessionId) applyNetReport(text);
+      },
+      onError: (error) => {
+        if (id === sessionId) console.warn('[BLE] Status characteristic error:', error.message);
+      },
       onConnectionChange: (connected) => {
-        if (id !== sessionId || connected) return;
+        if (id !== sessionId) return;
+        renderWifi();
+        if (connected) return;
+        setProvision({ type: 'BLE_LOST' });
         setLink({
           status: 'disconnected',
           error: 'Bluetooth connection lost. Select Bluetooth again to reconnect.',
@@ -206,6 +281,12 @@ async function startBluetooth(id) {
     } catch (error) {
       console.warn('[BLE] Could not sync automation mode:', error.message);
     }
+    try {
+      await window.bleApi.requestWifiStatus();
+    } catch (error) {
+      console.warn('[BLE] Could not request Wi-Fi status:', error.message);
+    }
+    renderWifi();
   } catch (error) {
     if (id !== sessionId) return;
     reportLocalError('Bluetooth: ' + error.message);
@@ -213,23 +294,34 @@ async function startBluetooth(id) {
 }
 
 async function startLocal(id) {
-  const ip = (window.state.localIp || '').trim();
-  setLink({ status: 'connecting', detail: ip });
+  const ip = (window.state.localIp || window.state.localHostname || '').trim();
+  window.localApi.setFallbackHost(window.state.localHostname);
+  setLink({ status: 'connecting', detail: ip || 'smarthome.local' });
 
   try {
     const started = await window.localApi.start(ip, {
       onStatus: (status) => {
         if (id === sessionId) applyReport(status);
       },
-      onLinkChange: (up, message) => {
+      onLinkChange: (up, message, address) => {
         if (id !== sessionId) return;
-        setLink({ status: up ? 'connected' : 'disconnected', error: up ? '' : message, detail: ip });
+        if (!up) {
+          fallbackToOnline(
+            'Local Wi-Fi is unavailable (' + message + '). Switched to Online/Firebase mode.'
+          );
+          return;
+        }
+        setLink({
+          status: 'connected',
+          error: '',
+          detail: address || ip || 'smarthome.local',
+        });
       },
     });
     if (!started || id !== sessionId) return;
   } catch (error) {
     if (id !== sessionId) return;
-    reportLocalError('Local Wi-Fi: ' + error.message);
+    fallbackToOnline('Local Wi-Fi unavailable (' + error.message + '). Switched to Online/Firebase mode.');
   }
 }
 
@@ -254,8 +346,68 @@ function onSelectMode(mode) {
   }
 }
 
-function onIpChange(ip) {
-  window.state.setLocalIp(ip);
+async function onWifiConnect(ssid, password) {
+  if (!window.bleApi.isConnected()) {
+    setProvision({ type: 'ERROR', error: 'Connect to the device over Bluetooth first.' });
+    return;
+  }
+  const invalid = window.NestralQNet.validateWifiInput(ssid, password);
+  if (invalid) {
+    window.ui.toast(invalid);
+    renderWifi();
+    return;
+  }
+
+  setProvision({ type: 'START', baselineRevision: window.state.net.revision });
+  try {
+    await window.bleApi.sendWifiSetup(ssid, password);
+    setProvision({ type: 'SENT' });
+  } catch (error) {
+    setProvision({
+      type: window.bleApi.isConnected() ? 'ERROR' : 'BLE_LOST',
+      error: error.message,
+    });
+    window.ui.toast('Wi-Fi setup failed: ' + error.message);
+  } finally {
+    if (window.ui.elements.wifiPassword) window.ui.elements.wifiPassword.value = '';
+  }
+}
+
+async function onWifiForget() {
+  if (!window.bleApi.isConnected()) {
+    window.ui.toast('Connect to the device over Bluetooth first.');
+    return;
+  }
+  if (!window.confirm('Forget the saved Wi-Fi network on this device?')) return;
+  try {
+    await window.bleApi.forgetWifi();
+    await window.bleApi.requestWifiStatus();
+    window.ui.toast('Wi-Fi forget request sent.');
+  } catch (error) {
+    window.ui.toast('Could not forget Wi-Fi: ' + error.message);
+  }
+}
+
+async function onWifiCopyIp(ip) {
+  if (!ip) return;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(ip);
+    } else {
+      const input = document.createElement('textarea');
+      input.value = ip;
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      document.body.appendChild(input);
+      input.select();
+      const copied = document.execCommand('copy');
+      input.remove();
+      if (!copied) throw new Error('Clipboard access is unavailable.');
+    }
+    window.ui.toast('Device IP copied.');
+  } catch (error) {
+    window.ui.toast('Could not copy IP: ' + error.message);
+  }
 }
 
 // ---------- Commands ----------
@@ -345,7 +497,9 @@ async function init() {
   window.ui.setupEventListeners({
     onThemeToggle,
     onSelectMode,
-    onIpChange,
+    onWifiConnect,
+    onWifiForget,
+    onWifiCopyIp,
     onAutoMode: (v) => sendActuator('auto', v),
     onFan: (v) => sendActuator('fan', v),
     onHeater: (v) => sendActuator('heater', v),
@@ -464,12 +618,12 @@ async function init() {
     bluetooth: window.bleApi.isSupported(),
     local: window.localApi.isAvailable(),
   });
-  window.ui.renderIp(window.state.localIp);
   window.ui.renderTheme(window.state.theme);
   window.ui.renderSensors(window.state.sensors);
   window.ui.renderDevices(window.state.device);
   window.ui.renderThresholds(window.state.thresholds);
   window.ui.renderStatus(currentMode(), window.state.link);
+  renderWifi();
   window.ui.switchTab('home');
   window.ui.renderHistory(window.state.history);
   window.ui.renderReports(window.state.history);

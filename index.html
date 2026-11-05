@@ -14,6 +14,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script defer src="js/config.js"></script>
     <script defer src="js/firebase.js"></script>
+    <script defer src="js/netLogic.js"></script>
     <script defer src="js/state.js"></script>
     <script defer src="js/historyStore.js"></script>
     <script defer src="js/ble.js"></script>
@@ -382,11 +383,38 @@
           <p class="mode-status" id="mode-status"></p>
           <p class="mode-error" id="mode-error"></p>
           <p class="mode-note" id="mode-note"></p>
-          <div class="input-group ip-group">
-            <label for="local-ip-input">ESP32 IP address (for Local
-              Wi-Fi)</label>
-            <input type="text" id="local-ip-input" placeholder="192.168.1.50"
-              autocomplete="off" spellcheck="false">
+        </div>
+
+        <div class="settings-section" id="wifi-setup-section">
+          <h2 class="section-title">Device Wi-Fi setup</h2>
+          <p class="wifi-connect-hint" id="wifi-connect-hint">
+            Connect to the device over Bluetooth first
+          </p>
+          <p class="wifi-status" id="wifi-status">Not connected</p>
+          <p class="wifi-error" id="wifi-error" role="alert"></p>
+          <div class="wifi-ip-row" id="wifi-ip-row" hidden>
+            <strong class="wifi-ip" id="wifi-ip"></strong>
+            <button type="button" class="btn-secondary" id="wifi-copy-ip">Copy IP</button>
+          </div>
+          <div class="input-group wifi-input-group">
+            <label for="wifi-ssid">Wi-Fi name</label>
+            <input type="text" id="wifi-ssid" maxlength="32" autocomplete="off"
+              autocapitalize="none" spellcheck="false" placeholder="Network name">
+          </div>
+          <div class="input-group wifi-input-group">
+            <label for="wifi-password">Password</label>
+            <div class="wifi-password-row">
+              <input type="password" id="wifi-password" maxlength="63"
+                autocomplete="new-password" placeholder="Leave empty for open networks">
+              <button type="button" class="btn-secondary" id="wifi-show-password"
+                aria-pressed="false">Show</button>
+            </div>
+          </div>
+          <div class="wifi-actions">
+            <button type="button" class="btn-update" id="wifi-connect">Connect</button>
+            <button type="button" class="btn-secondary wifi-forget" id="wifi-forget">
+              Forget Wi-Fi
+            </button>
           </div>
         </div>
 

@@ -55,12 +55,105 @@
   color: var(--subtext-color);
 }
 
-.ip-group {
+.wifi-connect-hint,
+.wifi-status,
+.wifi-error {
+  margin: 0.6rem 0;
+  font-size: 0.88rem;
+  color: var(--subtext-color);
+}
+
+.wifi-connect-hint:empty,
+.wifi-error:empty {
+  display: none;
+}
+
+.wifi-error {
+  color: var(--danger-color);
+}
+
+.wifi-ip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.8rem 0;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-color);
+}
+
+.wifi-ip-row[hidden] {
+  display: none;
+}
+
+.wifi-ip {
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+}
+
+.wifi-input-group {
+  margin-top: 0.9rem;
+}
+
+.wifi-input-group input {
+  box-sizing: border-box;
+  max-width: none;
+}
+
+.wifi-password-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wifi-password-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.wifi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
   margin-top: 1rem;
 }
 
-.ip-group input {
-  max-width: 220px;
+.btn-secondary {
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-color);
+  background: var(--bg-color);
+  font-weight: 600;
+}
+
+.wifi-forget {
+  color: var(--danger-color);
+}
+
+.wifi-actions .is-busy:before {
+  content: "";
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-right: 0.45rem;
+  vertical-align: -0.08rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: wifi-spin 0.7s linear infinite;
+}
+
+@keyframes wifi-spin {
+  to { transform: rotate(360deg); }
+}
+
+.wifi-actions button:disabled,
+.wifi-password-row button:disabled,
+.wifi-ip-row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ---------- Link state on the badge and the chip ---------- */

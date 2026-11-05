@@ -8,11 +8,14 @@
   const POLL_MS = 1500;
   const RETRY_MS = 3000;
   const MAX_FAILS = 3;
+  const MDNS_HOST = 'smarthome.local';
 
   let gen = 0; // bumped by stop(), cancels any older start() or poll loop
   let active = false;
   let timer = null;
-  let ip = null;
+  let ip = '';
+  let fallbackHost = MDNS_HOST;
+  let activeAddress = '';
   let failures = 0;
   let linked = false;
   let handlers = {};
@@ -21,6 +24,10 @@
 
   const isValidIp = (value) =>
     /^(\d{1,3}\.){3}\d{1,3}$/.test(value) && value.split('.').every((n) => Number(n) <= 255);
+
+  const isValidHost = (value) =>
+    isValidIp(value) ||
+    (typeof value === 'string' && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.local$/i.test(value));
 
   function unreachable(address) {
     return new Error(
@@ -100,17 +107,37 @@
     };
   }
 
+  async function getStatusWithFallback(primary) {
+    const targets = [];
+    [primary, fallbackHost].forEach((target) => {
+      const value = (target || '').trim();
+      if (value && isValidHost(value) && !targets.includes(value)) targets.push(value);
+    });
+    if (!targets.length) throw new Error('No device address yet. Connect over Bluetooth and set up Wi-Fi first.');
+    let lastError;
+    for (const target of targets) {
+      try {
+        return { status: await getStatus(target), address: target };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError;
+  }
+
   async function tick(my) {
     if (my !== gen || !active) return;
     try {
-      const status = await getStatus(ip);
+      const result = await getStatusWithFallback(ip);
       if (my !== gen) return;
       failures = 0;
-      if (!linked) {
+      const addressChanged = result.address !== activeAddress;
+      activeAddress = result.address;
+      if (!linked || addressChanged) {
         linked = true;
-        if (handlers.onLinkChange) handlers.onLinkChange(true, '');
+        if (handlers.onLinkChange) handlers.onLinkChange(true, '', activeAddress);
       }
-      if (handlers.onStatus) handlers.onStatus(status);
+      if (handlers.onStatus) handlers.onStatus(result.status);
     } catch (error) {
       if (my !== gen) return;
       failures += 1;
@@ -136,29 +163,30 @@
     if (!isAvailable()) {
       throw new Error('Not available on this https page. Use the desktop app.');
     }
-    if (!isValidIp(target)) {
-      throw new Error('Enter the ESP32 IP address, for example 192.168.1.50.');
+    if (target && !isValidHost(target)) {
+      throw new Error('Invalid ESP32 IP address or hostname.');
     }
     stop();
     const my = gen;
     handlers = h || {};
 
-    const status = await getStatus(target); // fail fast on a wrong IP
+    const result = await getStatusWithFallback(target);
     if (my !== gen) return false;
 
     ip = target;
+    activeAddress = result.address;
     active = true;
     failures = 0;
     linked = true;
-    if (handlers.onLinkChange) handlers.onLinkChange(true, '');
-    if (handlers.onStatus) handlers.onStatus(status);
+    if (handlers.onLinkChange) handlers.onLinkChange(true, '', activeAddress);
+    if (handlers.onStatus) handlers.onStatus(result.status);
     timer = setTimeout(() => tick(my), POLL_MS);
     return true;
   }
 
   function sendCommand(command) {
-    if (!active || !ip) return Promise.reject(new Error('Not connected to the ESP32.'));
-    return request(ip, '/cmd?c=' + encodeURIComponent(command)).then(d => ({
+    if (!active || !activeAddress) return Promise.reject(new Error('Not connected to the ESP32.'));
+    return request(activeAddress, '/cmd?c=' + encodeURIComponent(command)).then(d => ({
       temperature: Number(d.temperature) || 0,
       humidity: Number(d.humidity) || 0,
       lightIntensity: Number(d.light) || 0,
@@ -172,5 +200,31 @@
     }));
   }
 
-  window.localApi = { isAvailable, isValidIp, start, stop, sendCommand };
+  function setTarget(address) {
+    const target = (address || '').trim();
+    if (target && !isValidHost(target)) return;
+    if (target === ip) return;
+    ip = target;
+    if (active) {
+      start(ip, handlers).catch((error) => {
+        if (handlers.onLinkChange) handlers.onLinkChange(false, error.message, ip || MDNS_HOST);
+      });
+    }
+  }
+
+  function setFallbackHost(host) {
+    const target = (host || '').trim();
+    fallbackHost = target && isValidHost(target) && !isValidIp(target) ? target : MDNS_HOST;
+  }
+
+  window.localApi = {
+    isAvailable,
+    isValidIp,
+    isValidHost,
+    start,
+    stop,
+    setTarget,
+    setFallbackHost,
+    sendCommand,
+  };
 })();

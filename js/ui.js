@@ -16,7 +16,10 @@ window.ui.initElements = function () {
     'dark-mode-switch',
     'status-badge', 'status-badge-icon', 'status-badge-text',
     'connection-toggle', 'mode-toggle-icon',
-    'mode-status', 'mode-error', 'mode-note', 'local-ip-input',
+    'mode-status', 'mode-error', 'mode-note',
+    'wifi-connect-hint', 'wifi-status', 'wifi-error', 'wifi-ip-row', 'wifi-ip',
+    'wifi-ssid', 'wifi-password', 'wifi-show-password', 'wifi-connect',
+    'wifi-forget', 'wifi-copy-ip',
     'tab-home-btn', 'tab-history-btn', 'tab-reports-btn', 'tab-settings-btn',
     'tab-home', 'tab-history', 'tab-reports', 'tab-settings',
     'update-thresholds-btn', 'settings-update-thresholds-btn',
@@ -165,8 +168,41 @@ window.ui.renderTheme = function (theme) {
   window.ui.setIcon(e.themeToggleIcon, isDark ? 'sun' : 'moon'); // shows what a click switches to
 };
 
-window.ui.renderIp = function (ip) {
-  if (window.ui.elements.localIpInput) window.ui.elements.localIpInput.value = ip || '';
+window.ui.renderWifiSetup = function (net, provision, connected) {
+  const e = window.ui.elements;
+  const status = net && net.state ? net.state : null;
+  const busy = provision && (provision.phase === 'sending' || provision.phase === 'waiting');
+  if (e.wifiStatus) {
+    e.wifiStatus.textContent = busy
+      ? 'Connecting...'
+      : window.NestralQNet.netStatusLabel(net);
+  }
+  if (e.wifiError) {
+    e.wifiError.textContent =
+      (provision && provision.error) ||
+      (status === 'FAILED' ? window.NestralQNet.FAILED_MESSAGE : '');
+  }
+  if (e.wifiConnectHint) {
+    e.wifiConnectHint.textContent = connected
+      ? ''
+      : 'Connect to the device over Bluetooth first';
+  }
+
+  const ip = (status === 'CONNECTED' && net.ip) || window.state.localIp || '';
+  if (e.wifiIp) e.wifiIp.textContent = ip;
+  if (e.wifiIpRow) e.wifiIpRow.hidden = !ip;
+
+  [e.wifiSsid, e.wifiPassword, e.wifiShowPassword, e.wifiConnect, e.wifiForget]
+    .forEach((el) => { if (el) el.disabled = !connected || !!busy; });
+  if (e.wifiConnect) {
+    e.wifiConnect.classList.toggle('is-busy', !!busy);
+    e.wifiConnect.textContent = busy
+      ? 'Connecting...'
+      : provision && ['timeout', 'error', 'failed'].includes(provision.phase)
+        ? 'Retry'
+        : 'Connect';
+  }
+  if (e.wifiCopyIp) e.wifiCopyIp.disabled = !ip;
 };
 
 // ---------- Sensor History & Reports ----------
@@ -920,10 +956,29 @@ window.ui.setupEventListeners = function (callbacks) {
     });
   }
 
-  // ESP32 IP address
-  if (e.localIpInput) {
-    e.localIpInput.addEventListener('input', () => {
-      if (callbacks.onIpChange) callbacks.onIpChange(e.localIpInput.value.trim());
+  if (e.wifiShowPassword && e.wifiPassword) {
+    e.wifiShowPassword.addEventListener('click', () => {
+      const show = e.wifiPassword.type === 'password';
+      e.wifiPassword.type = show ? 'text' : 'password';
+      e.wifiShowPassword.textContent = show ? 'Hide' : 'Show';
+      e.wifiShowPassword.setAttribute('aria-pressed', show ? 'true' : 'false');
+    });
+  }
+  if (e.wifiConnect) {
+    e.wifiConnect.addEventListener('click', () => {
+      if (!callbacks.onWifiConnect) return;
+      const password = e.wifiPassword ? e.wifiPassword.value : '';
+      callbacks.onWifiConnect(e.wifiSsid ? e.wifiSsid.value : '', password);
+    });
+  }
+  if (e.wifiForget) {
+    e.wifiForget.addEventListener('click', () => {
+      if (callbacks.onWifiForget) callbacks.onWifiForget();
+    });
+  }
+  if (e.wifiCopyIp) {
+    e.wifiCopyIp.addEventListener('click', () => {
+      if (callbacks.onWifiCopyIp && e.wifiIp) callbacks.onWifiCopyIp(e.wifiIp.textContent);
     });
   }
 

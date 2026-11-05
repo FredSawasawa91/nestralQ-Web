@@ -6,10 +6,12 @@
   const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
   const RX_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8'; // write to ESP32
   const TX_UUID = 'beb5483f-36e1-4688-b7f5-ea07361b26a8'; // notifications from ESP32
+  const NET_UUID = 'beb54840-36e1-4688-b7f5-ea07361b26a8'; // read + notify network status
 
   let device = null;
   let rx = null;
   let tx = null;
+  let net = null;
   let ready = false;
   let handlers = {};
   let chain = Promise.resolve(); // GATT operations must not overlap
@@ -39,6 +41,10 @@
     if (handlers.onData) handlers.onData(decoder.decode(event.target.value));
   }
 
+  function onNetNotify(event) {
+    if (handlers.onNet) handlers.onNet(decoder.decode(event.target.value));
+  }
+
   function onDisconnected() {
     const wasReady = ready;
     teardown();
@@ -49,11 +55,15 @@
     if (tx) {
       try { tx.removeEventListener('characteristicvaluechanged', onNotify); } catch (e) { /* ignore */ }
     }
+    if (net) {
+      try { net.removeEventListener('characteristicvaluechanged', onNetNotify); } catch (e) { /* ignore */ }
+    }
     if (device) device.removeEventListener('gattserverdisconnected', onDisconnected);
     const old = device;
     device = null;
     rx = null;
     tx = null;
+    net = null;
     ready = false;
     return old;
   }
@@ -85,7 +95,16 @@
       tx = await service.getCharacteristic(TX_UUID);
       tx.addEventListener('characteristicvaluechanged', onNotify);
       await tx.startNotifications();
+      net = await service.getCharacteristic(NET_UUID);
+      net.addEventListener('characteristicvaluechanged', onNetNotify);
+      await net.startNotifications();
       ready = true;
+      try {
+        const status = await net.readValue();
+        if (handlers.onNet) handlers.onNet(decoder.decode(status));
+      } catch (error) {
+        if (handlers.onError) handlers.onError(error);
+      }
       return device.name || 'ESP32';
     } catch (error) {
       const failed = teardown();
@@ -115,6 +134,20 @@
     return p;
   }
 
+  async function sendWifiSetup(ssid, password) {
+    await writeCommand('SSID:' + ssid);
+    await writeCommand('PASS:' + (password || ''));
+    await writeCommand('WIFI:CONNECT');
+  }
+
+  function forgetWifi() {
+    return writeCommand('WIFI:FORGET');
+  }
+
+  function requestWifiStatus() {
+    return writeCommand('WIFI:STATUS');
+  }
+
   // Format: temp,hum,light,motion,fan,heater,bulb,buzzer,auto,min,max
   function parseData(text) {
     const v = String(text).trim().split(',');
@@ -137,5 +170,16 @@
     };
   }
 
-  window.bleApi = { isSupported, isConnected, connect, disconnect, writeCommand, parseData };
+  window.bleApi = {
+    isSupported,
+    isConnected,
+    connect,
+    disconnect,
+    writeCommand,
+    sendWifiSetup,
+    forgetWifi,
+    requestWifiStatus,
+    parseData,
+    getDeviceId: () => (device ? device.id : null),
+  };
 })();

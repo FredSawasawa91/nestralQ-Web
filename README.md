@@ -8,7 +8,9 @@ A vanilla HTML/CSS/JavaScript smart home control application with Firebase Realt
 - **Device Controls**: Fan, heater, bulb, and automation mode toggles
 - **Temperature Thresholds**: Configurable min/max temperature limits
 - **Dark Mode**: Light/dark theme with localStorage persistence
-- **Connection Modes**: Online (Firebase) or Bluetooth/Offline mode
+- **Connection Modes**: Online (Firebase), Bluetooth, and Local Wi-Fi
+- **Device Wi-Fi Setup**: Send Wi-Fi credentials to the ESP32 over Bluetooth and automatically discover/persist its local IP
+- **Local Wi-Fi Mode**: Uses the device-reported IP, falls back to `smarthome.local`, then returns to Firebase mode if local HTTP is unreachable
 - **Real-time Updates**: Firebase Realtime Database listeners keep UI in sync
 - **Responsive Design**: Works on mobile, tablet, and desktop
 
@@ -107,6 +109,17 @@ Then open `http://localhost:8000` in your browser.
 - Safari 13.1+
 - Uses ES6 modules (`type="module"`)
 - Uses Firebase Web SDK v10 (CDN)
+- Wi-Fi provisioning requires Web Bluetooth in Chrome/Edge or the Electron desktop app.
+- Local HTTP access is blocked when this app is hosted on an HTTPS page (such as GitHub Pages). Use the Electron app for local Wi-Fi control, or use Online/Firebase mode from HTTPS.
+- Wi-Fi passwords are sent only over Bluetooth and are not logged or saved by the app.
+
+## Testing
+
+Run the NET status parser and Wi-Fi provisioning tests with:
+
+```bash
+npm test
+```
 
 ## License
 
