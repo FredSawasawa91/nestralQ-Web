@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, session } = require('electron');
+const { app, BrowserWindow, shell, Menu, ipcMain, session, Notification } = require('electron');
 const http = require('http');
 const path = require('path');
 
@@ -73,6 +73,18 @@ ipcMain.handle('esp32-http', (_event, urlString) => {
     });
     req.on('error', reject);
   });
+});
+
+ipcMain.on('desktop-notification', (event, notification) => {
+  if (!win || event.sender !== win.webContents || !Notification.isSupported()) return;
+  const title = typeof notification?.title === 'string'
+    ? notification.title.slice(0, 100)
+    : '';
+  const body = typeof notification?.body === 'string'
+    ? notification.body.slice(0, 300)
+    : '';
+  if (!title || !body) return;
+  new Notification({ title, body }).show();
 });
 
 let win;

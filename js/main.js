@@ -12,6 +12,18 @@ window.state.setTheme(initialTheme);
 let sessionId = 0; // bumped on every mode change, so late async results can be ignored
 let provision = { phase: 'idle', error: null };
 let provisionTimer = null;
+const notificationTracker = window.NestralQNotifications.createTracker();
+let firebaseInitial = { sensors: true, commands: true, autoMode: true };
+
+function checkDesktopNotifications(options) {
+  if (!window.desktopNotifications) return;
+  const notifications = notificationTracker.update({
+    sensors: window.state.sensors,
+    device: window.state.device,
+    thresholds: window.state.thresholds,
+  }, options);
+  notifications.forEach((notification) => window.desktopNotifications.show(notification));
+}
 
 function currentMode() {
   return window.state.device.connectionMode;
@@ -61,10 +73,17 @@ let unsubscribeSensors, unsubscribeCommands, unsubscribeAutoMode, unsubscribeThr
 function startFirebaseListeners() {
   if (!isFirebaseReady()) return;
   console.log('[App] Starting Firebase listeners...');
+  notificationTracker.reset();
+  firebaseInitial = { sensors: true, commands: true, autoMode: true };
 
   unsubscribeSensors = window.fbApi.startSensorsListener((data) => {
     window.state.updateSensors(data);
     window.ui.renderSensors(window.state.sensors);
+    checkDesktopNotifications({
+      sensorsReady: !firebaseInitial.sensors,
+      actuatorsReady: false,
+    });
+    firebaseInitial.sensors = false;
   });
 
   unsubscribeCommands = window.fbApi.startCommandsListener((data) => {
@@ -74,16 +93,27 @@ function startFirebaseListeners() {
       bulbState: data.bulb,
     });
     window.ui.renderDevices(window.state.device);
+    checkDesktopNotifications({
+      sensorsReady: false,
+      actuatorsReady: !firebaseInitial.commands && !firebaseInitial.autoMode,
+    });
+    firebaseInitial.commands = false;
   });
 
   unsubscribeAutoMode = window.fbApi.startAutoModeListener((value) => {
     window.state.updateDevice({ autoMode: value });
     window.ui.renderDevices(window.state.device);
+    checkDesktopNotifications({
+      sensorsReady: false,
+      actuatorsReady: !firebaseInitial.commands && !firebaseInitial.autoMode,
+    });
+    firebaseInitial.autoMode = false;
   });
 
   unsubscribeThresholds = window.fbApi.startThresholdsListener((data) => {
     window.state.updateThresholds(data);
     window.ui.renderThresholds(window.state.thresholds);
+    checkDesktopNotifications({ sensorsReady: false, actuatorsReady: false });
   });
 
   unsubscribeHistory = window.fbApi.startHistoryListener((data) => {
@@ -182,11 +212,13 @@ function applyReport(r) {
 
   window.ui.renderSensors(s.sensors);
   window.ui.renderDevices(s.device);
+  checkDesktopNotifications();
   recordLocalHistory(s.sensors);
 }
 
 // ---------- Connection modes ----------
 function leaveCurrentMode() {
+  notificationTracker.reset();
   stopFirebaseListeners();
   window.bleApi.disconnect();
   window.localApi.stop();

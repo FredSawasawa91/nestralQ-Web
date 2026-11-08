@@ -5,3 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('esp32http', {
   request: (url) => ipcRenderer.invoke('esp32-http', url),
 });
+
+contextBridge.exposeInMainWorld('desktopNotifications', {
+  show: (notification) => ipcRenderer.send('desktop-notification', notification),
+});

@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder",
-    "test": "node --test js/netLogic.test.cjs"
+    "test": "node --test js/netLogic.test.cjs js/notificationRules.test.cjs"
   },
   "build": {
     "appId": "com.nestralq.app",
