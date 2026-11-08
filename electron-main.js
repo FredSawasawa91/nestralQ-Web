@@ -1,5 +1,15 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, session, Notification } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  shell,
+  Menu,
+  ipcMain,
+  session,
+  Notification,
+  dialog,
+} = require('electron');
 const http = require('http');
+const fs = require('fs');
 const path = require('path');
 
 // Allow only one window/instance of the app
@@ -85,6 +95,32 @@ ipcMain.on('desktop-notification', (event, notification) => {
     : '';
   if (!title || !body) return;
   new Notification({ title, body }).show();
+});
+
+ipcMain.handle('save-report-workbook', async (event, payload) => {
+  if (!win || event.sender !== win.webContents) {
+    throw new Error('Report export is not available from this window.');
+  }
+  if (!payload || !Array.isArray(payload.entries)) {
+    throw new TypeError('Report readings are invalid.');
+  }
+  const period = ['24h', '7d', '30d', 'all'].includes(payload.period)
+    ? payload.period
+    : 'all';
+  const { createReportWorkbook } = require('./js/reportExport');
+  const { workbook, records } = createReportWorkbook(payload.entries, period);
+  if (records.length === 0) return { status: 'empty' };
+
+  const result = await dialog.showSaveDialog(win, {
+    defaultPath: path.join(app.getPath('documents'), `nestralq-report-${period}.xlsx`),
+    filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }],
+  });
+  if (result.canceled || !result.filePath) return { status: 'cancelled' };
+
+  const XLSX = require('@e965/xlsx');
+  const contents = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  await fs.promises.writeFile(result.filePath, contents);
+  return { status: 'saved', count: records.length };
 });
 
 let win;

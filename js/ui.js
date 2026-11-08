@@ -30,7 +30,7 @@ window.ui.initElements = function () {
     'hist-count', 'hist-avg-temp', 'hist-min-max', 'hist-motion',
     'history-table-body', 'history-chart',
     // Reports
-    'reports-period', 'export-report-csv-btn',
+    'reports-period', 'export-report-xlsx-btn',
     'rep-total-days', 'rep-avg-temp', 'rep-min-temp', 'rep-max-temp',
     'reports-table-body', 'reports-chart-card', 'reports-chart-tabs',
     'reports-chart-readout', 'reports-chart-body',
@@ -65,7 +65,7 @@ window.ui.initElements = function () {
 
   // Reports element references
   window.ui.elements.reportsPeriod = document.getElementById('reports-period');
-  window.ui.elements.exportReportCsvBtn = document.getElementById('export-report-csv-btn');
+  window.ui.elements.exportReportXlsxBtn = document.getElementById('export-report-xlsx-btn');
   window.ui.elements.repTotalDays = document.getElementById('rep-total-days');
   window.ui.elements.repAvgTemp = document.getElementById('rep-avg-temp');
   window.ui.elements.repMinTemp = document.getElementById('rep-min-temp');
@@ -1054,10 +1054,10 @@ window.ui.setupEventListeners = function (callbacks) {
     });
   }
 
-  // Export Reports CSV
-  if (e.exportReportCsvBtn) {
-    e.exportReportCsvBtn.addEventListener('click', () => {
-      if (callbacks.onExportReportCsv) callbacks.onExportReportCsv();
+  // Export Reports workbook
+  if (e.exportReportXlsxBtn) {
+    e.exportReportXlsxBtn.addEventListener('click', () => {
+      if (callbacks.onExportReportXlsx) callbacks.onExportReportXlsx();
     });
   }
 

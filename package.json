@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder",
-    "test": "node --test js/netLogic.test.cjs js/notificationRules.test.cjs"
+    "test": "node --test js/netLogic.test.cjs js/notificationRules.test.cjs js/reportExport.test.cjs"
   },
   "build": {
     "appId": "com.nestralq.app",
@@ -19,8 +19,13 @@
       "preload.js",
       "build/icon.*"
     ],
-    "win": { "target": "nsis" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "keywords": [],
   "author": "",
@@ -29,5 +34,8 @@
   "devDependencies": {
     "electron": "^45.0.0",
     "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "@e965/xlsx": "^0.20.3"
   }
 }

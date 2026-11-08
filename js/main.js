@@ -571,7 +571,7 @@ async function init() {
       window.state.reportsPeriod = v;
       window.ui.renderReports(window.state.history || []);
     },
-    onExportReportCsv: () => {
+    onExportReportXlsx: async () => {
       const allEntries = window.state.history || [];
       if (allEntries.length === 0) {
         window.ui.toast('No report data to export.');
@@ -580,64 +580,20 @@ async function init() {
       const period = (window.ui.elements.reportsPeriod && window.ui.elements.reportsPeriod.value)
         || window.state.reportsPeriod
         || 'all';
-      const periodMs = {
-        '24h': 24 * 60 * 60 * 1000,
-        '7d': 7 * 24 * 60 * 60 * 1000,
-        '30d': 30 * 24 * 60 * 60 * 1000,
-        all: Infinity,
-      }[period] || Infinity;
-      const now = Date.now();
-      const entries = allEntries.filter((en) => {
-        const n = Number(en.ts);
-        if (!Number.isFinite(n) || n <= 0) return false;
-        const ms = n < 1e12 ? n * 1000 : n;
-        return now - ms <= periodMs;
-      });
-
-      const groups = {};
-      entries.forEach((en) => {
-        const n = Number(en.ts);
-        const ms = n < 1e12 ? n * 1000 : n;
-        const key = new Date(ms + 2 * 60 * 60 * 1000).toISOString().split('T')[0];
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(en);
-      });
-      const keys = Object.keys(groups).sort().reverse();
-
-      const computeStats = (groupEntries) => {
-        const temps = groupEntries.map((en) => en.temperature).filter((v) => v != null);
-        const humids = groupEntries.map((en) => en.humidity).filter((v) => v != null);
-        const motions = groupEntries.filter((en) => en.motionDetected).length;
-        return {
-          count: groupEntries.length,
-          avgTemp: temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : '-',
-          minTemp: temps.length ? Math.min(...temps).toFixed(1) : '-',
-          maxTemp: temps.length ? Math.max(...temps).toFixed(1) : '-',
-          avgHumidity: humids.length
-            ? (humids.reduce((a, b) => a + b, 0) / humids.length).toFixed(1)
-            : '-',
-          motionCount: motions,
-        };
-      };
-
-      const header = 'Period,Readings,Avg Temp (°C),Min Temp (°C),Max Temp (°C),Avg Humidity (%),Motion Events';
-      const rows = keys.map((key) => {
-        const stats = computeStats(groups[key]);
-        const label = new Date(key + 'T00:00:00Z').toLocaleDateString(undefined, {
-          timeZone: 'Africa/Blantyre',
-          weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-        });
-        return [label, stats.count, stats.avgTemp, stats.minTemp, stats.maxTemp, stats.avgHumidity, stats.motionCount].join(',');
-      });
-      const csv = [header, ...rows].join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'nestralq-report-' + period + '.csv';
-      a.click();
-      URL.revokeObjectURL(url);
-      window.ui.toast('Report exported to CSV.');
+      try {
+        if (!window.reportWorkbook || typeof window.reportWorkbook.save !== 'function') {
+          throw new Error('Workbook export is unavailable. Restart the desktop app and try again.');
+        }
+        const result = await window.reportWorkbook.save({ entries: allEntries, period });
+        if (result.status === 'empty') {
+          window.ui.toast('No readings match the selected period.');
+        } else if (result.status === 'saved') {
+          window.ui.toast(`Report workbook saved with ${result.count} readings.`);
+        }
+      } catch (error) {
+        console.error('[Reports] Workbook export failed:', error);
+        window.ui.toast(`Report export failed: ${error.message || 'unknown error'}`);
+      }
     },
   });
 

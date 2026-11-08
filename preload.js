@@ -9,3 +9,7 @@ contextBridge.exposeInMainWorld('esp32http', {
 contextBridge.exposeInMainWorld('desktopNotifications', {
   show: (notification) => ipcRenderer.send('desktop-notification', notification),
 });
+
+contextBridge.exposeInMainWorld('reportWorkbook', {
+  save: (payload) => ipcRenderer.invoke('save-report-workbook', payload),
+});
